@@ -4,3 +4,4 @@
 *.self
 *.pkg
 build/
+port/work/
