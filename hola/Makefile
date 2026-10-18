@@ -9,7 +9,6 @@ endif
 
 include $(PSL1GHT)/ppu_rules
 
-PORTLIBS	:=	$(PS3DEV)/portlibs/ppu
 
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
@@ -40,13 +39,13 @@ LDFLAGS		=	$(MACHDEP) -Wl,-Map,$(notdir $@).map
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS	:=	-lSDL2 -lrsx -lgcm_sys -lio -lsysutil -laudio -lrt -llv2 -lm
+LIBS	:=	-lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:=	$(PORTLIBS)
+LIBDIRS	:=
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional

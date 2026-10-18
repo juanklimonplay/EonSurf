@@ -27,7 +27,10 @@ jobs:
           export PS3DEV=/usr/local/ps3dev PSL1GHT=/usr/local/ps3dev
           export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin
           make -C hola pkg
+          make -C hola-sdl pkg
       - uses: actions/upload-artifact@v4
         with:
           name: EonSurf-hola-mundo-pkg
-          path: hola/*.pkg
+          path: |
+            hola/hola.pkg
+            hola-sdl/hola-sdl.pkg
