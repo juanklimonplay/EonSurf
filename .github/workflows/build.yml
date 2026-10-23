@@ -1,0 +1,36 @@
+name: build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  hola-mundo-pkg:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias del anfitrión
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texinfo flex bison libgmp-dev libelf-dev libmpfr-dev libmpc-dev \
+            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev
+      - name: Cache del kit (ps3toolchain + PSL1GHT + ps3libraries)
+        id: kit
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/ps3dev
+          key: ps3dev-${{ hashFiles('docs/TOOLCHAIN.md', 'tools/build-kit.sh') }}
+      - name: Compilar el kit
+        if: steps.kit.outputs.cache-hit != 'true'
+        run: sudo -E bash tools/build-kit.sh
+      - name: Compilar hola mundo y empaquetar .pkg
+        run: |
+          export PS3DEV=/usr/local/ps3dev PSL1GHT=/usr/local/ps3dev
+          export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin
+          make -C hola pkg
+          make -C hola-sdl pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EonSurf-hola-mundo-pkg
+          path: |
+            hola/hola.pkg
+            hola-sdl/hola-sdl.pkg
