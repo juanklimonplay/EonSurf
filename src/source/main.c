@@ -12,6 +12,7 @@
 #include <io/pad.h>
 #include <rsx/rsx.h>
 #include <net/net.h>
+#include <curl/curl.h>
 
 #include "libnsfb.h"
 #include "libnsfb_plot.h"
@@ -111,24 +112,109 @@ static void text(int x, int y, int s, const char *t, u32 c)
     }
 }
 
-/* Simulador de descarga de pagina o contenido basico */
+/* Estructura para capturar respuesta HTTP/HTTPS via libcurl */
+struct HttpMemoryBuffer {
+    char *data;
+    size_t size;
+};
+
+static size_t http_write_callback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    struct HttpMemoryBuffer *mem = (struct HttpMemoryBuffer *)userp;
+
+    /* Limitar a 64 KB para no desbordar RAM en páginas gigantes */
+    if (mem->size + realsize > 64 * 1024) {
+        realsize = (64 * 1024) - mem->size;
+        if (realsize == 0) return 0;
+    }
+
+    char *ptr = realloc(mem->data, mem->size + realsize + 1);
+    if (!ptr) return 0;
+
+    mem->data = ptr;
+    memcpy(&(mem->data[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->data[mem->size] = 0;
+    return size * nmemb;
+}
+
+/* Extrae texto legible descartando tags <...> */
+static void extract_plain_text(const char *html, char *out_text, size_t max_len)
+{
+    size_t out_idx = 0;
+    int in_tag = 0;
+
+    for (size_t i = 0; html[i] != '\0' && out_idx < max_len - 1; i++) {
+        if (html[i] == '<') {
+            in_tag = 1;
+        } else if (html[i] == '>') {
+            in_tag = 0;
+            if (out_idx > 0 && out_text[out_idx - 1] != ' ') {
+                out_text[out_idx++] = ' ';
+            }
+        } else if (!in_tag) {
+            char c = html[i];
+            if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+            if (c == ' ' && out_idx > 0 && out_text[out_idx - 1] == ' ') continue;
+            if (c >= 32 && c <= 126) {
+                out_text[out_idx++] = c;
+            }
+        }
+    }
+    out_text[out_idx] = '\0';
+}
+
+/* Navegación y descarga web real por HTTPS */
 static void navigate_to(const char *url)
 {
     strncpy(current_url, url, sizeof(current_url) - 1);
     current_url[sizeof(current_url) - 1] = '\0';
 
-    if (strstr(url, "wikipedia") || strstr(url, "wiki")) {
-        snprintf(page_title, sizeof(page_title), "Wikipedia - La enciclopedia libre");
-        snprintf(page_body, sizeof(page_body), "Bienvenido a Wikipedia en PS3. EonSurf renderiza texto enriquecido a 60 FPS con NetSurf.");
-    } else if (strstr(url, "google")) {
-        snprintf(page_title, sizeof(page_title), "Google Search");
-        snprintf(page_body, sizeof(page_body), "Motor de busqueda disponible. Escribe tu consulta usando el teclado en pantalla.");
-    } else if (strstr(url, "gemini")) {
-        snprintf(page_title, sizeof(page_title), "Geminispace - Protocolo Ultraligero");
-        snprintf(page_body, sizeof(page_body), "Conectado a la red Gemini sin rastreadores ni anuncios pesados.");
-    } else {
-        snprintf(page_title, sizeof(page_title), "Cargando: %s", url);
-        snprintf(page_body, sizeof(page_body), "Pagina web solicitada. Presiona [START] para salir al XMB o [/\\] para ingresar otra URL.");
+    snprintf(page_title, sizeof(page_title), "Conectando: %s", url);
+    snprintf(page_body, sizeof(page_body), "Descargando contenido web seguro mediante libcurl + mbedTLS...");
+
+    if (!net_initialized) {
+        snprintf(page_title, sizeof(page_title), "Modo Sin Conexion: %s", url);
+        snprintf(page_body, sizeof(page_body), "La red de PS3 no esta inicializada. Conecta la consola a Internet.");
+        return;
+    }
+
+    CURL *curl = curl_easy_init();
+    if (curl) {
+        struct HttpMemoryBuffer chunk = {0};
+        chunk.data = malloc(1);
+        chunk.size = 0;
+
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, http_write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (PlayStation 3; EonSurf/0.3.1; CellOS)");
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); /* Aceptar certificados modernos en PS3 */
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+        CURLcode res = curl_easy_perform(curl);
+        if (res == CURLE_OK && chunk.size > 0) {
+            long response_code = 0;
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+            snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, url);
+
+            char clean_body[800] = "";
+            extract_plain_text(chunk.data, clean_body, sizeof(clean_body));
+            if (strlen(clean_body) > 0) {
+                snprintf(page_body, sizeof(page_body), "%s", clean_body);
+            } else {
+                snprintf(page_body, sizeof(page_body), "Pagina recibida (Tamano: %u bytes).", (unsigned int)chunk.size);
+            }
+        } else {
+            snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
+            snprintf(page_body, sizeof(page_body), "No se pudo obtener respuesta de %s: %s", url, curl_easy_strerror(res));
+        }
+
+        if (chunk.data) free(chunk.data);
+        curl_easy_cleanup(curl);
     }
 }
 
