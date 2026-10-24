@@ -1,0 +1,37 @@
+{
+  "app_name": "EonSurf",
+  "author": "JuAnKLiMoN",
+  "version": "1.0.0",
+  "homenaje": "20 Años de PlayStation 3 (2006 - 2026)",
+  "ui": {
+    "search_placeholder": "Buscar o ingresar código Downloader (Start)...",
+    "search_hint": "Escribe una web o un código numérico de Downloader",
+    "shortcuts": {
+      "start": "Teclado",
+      "square": "Modo Lectura",
+      "r3": "Velocidad Cursor",
+      "select": "Opciones"
+    },
+    "speed_dial": {
+      "youtube": "YouTube TV Ligero",
+      "wikipedia": "Enciclopedia",
+      "radios": "Radios del Mundo",
+      "mediafire": "Descargas Nube",
+      "local_files": "Disco PS3 / USB",
+      "webman": "Control de Consola",
+      "duckduckgo": "Buscador Limpio",
+      "settings": "Ajustes"
+    },
+    "downloader": {
+      "resolving": "Resolviendo código Downloader...",
+      "download_prompt": "¿Deseas descargar este archivo?",
+      "target_usb": "Pendrive USB (/dev_usb000/)",
+      "target_hdd": "Disco Interno PS3 (/dev_hdd0/downloads/)"
+    },
+    "updates": {
+      "check_title": "Actualizador EonUpdate",
+      "update_available": "¡Nueva versión disponible de EonSurf!",
+      "up_to_date": "Ya tienes la última versión instalada."
+    }
+  }
+}

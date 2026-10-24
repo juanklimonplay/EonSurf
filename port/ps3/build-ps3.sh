@@ -55,10 +55,14 @@ make_self_npdrm build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN UP0001-EONSURF
 sfo -f build-eonsurf/pkg/sfo.xml build-eonsurf/PARAM.SFO
 
 mkdir -p build-eonsurf/pkg_dir/USRDIR
+mkdir -p build-eonsurf/pkg_dir/USRDIR/startpage
 cp build-eonsurf/EBOOT.BIN build-eonsurf/pkg_dir/USRDIR/
 cp build-eonsurf/PARAM.SFO build-eonsurf/pkg_dir/
 cp build-eonsurf/pkg/ICON0.PNG build-eonsurf/pkg_dir/
 cp build-eonsurf/pkg/PIC1.PNG build-eonsurf/pkg_dir/ 2>/dev/null || true
+cp repo/pkg/eonsurf.cfg build-eonsurf/pkg_dir/USRDIR/ 2>/dev/null || true
+cp repo/pkg/lang_*.json build-eonsurf/pkg_dir/USRDIR/ 2>/dev/null || true
+cp repo/startpage/index.html build-eonsurf/pkg_dir/USRDIR/startpage/ 2>/dev/null || true
 
 pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || \
 package_finalize build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || true
