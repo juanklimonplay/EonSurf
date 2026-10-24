@@ -30,7 +30,6 @@
 #include "eonsurf_history.h"
 #include "eonsurf_downloader.h"
 #include "eonsurf_modern_ui.h"
-#include "eonsurf_mockup_engine.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -319,6 +318,8 @@ static inline void eonsurf_draw_download_osd(uint32_t *fb, int pitch) {
     snprintf(mb_label, sizeof(mb_label), "%.2f MB", (double)g_dl.bytes_now / (1024.0 * 1024.0));
     draw_text_clipped(box_x + box_w - 100, box_y + 12, 1, mb_label, 0x0000e5ff, box_x + box_w - 12);
 }
+
+#include "eonsurf_mockup_engine.h"
 
 static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 default_color)
 {
