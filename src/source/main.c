@@ -173,7 +173,7 @@ int main(void)
             }
             prev_btn_triangle = pdata.BTN_TRIANGLE;
 
-            /* Clic con Cruz en la barra de URL (Y: 10 a 50) */
+            /* Clic con Cruz (Enter/K) en la barra de URL o marcadores */
             if (pdata.BTN_CROSS && !prev_btn_cross) {
                 if (py >= 10 && py <= 50) {
                     char url_ingresada[512] = "";
@@ -181,6 +181,14 @@ int main(void)
                         if (strlen(url_ingresada) > 0) {
                             navigate_to(url_ingresada);
                         }
+                    }
+                } else if (py >= 270 && py <= 320) {
+                    if (px >= 60 && px <= 340) {
+                        navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
+                    } else if (px >= 360 && px <= 640) {
+                        navigate_to("https://gemini.google.com");
+                    } else if (px >= 660 && px <= 940) {
+                        navigate_to("https://www.psx-place.com");
                     }
                 }
             }
@@ -247,10 +255,34 @@ int main(void)
         snprintf(buf, sizeof(buf), "Cursor: %d, %d", px, py);
         text(W - 180, H - 24, 2, buf, 0x0038bdf8);
 
-        /* 5. Cursor interactivo de precision con halo visual */
-        rect(px - 1, py - 1, 16, 16, 0x0000b4d8);
-        rect(px, py, 14, 14, 0x00f59e0b);
-        rect(px + 3, py + 3, 8, 8, 0x00ffffff);
+        /* 5. Cursor en forma de flecha estilizada */
+        static const uint16_t arrow_mask[16] = {
+            0b1000000000000000,
+            0b1100000000000000,
+            0b1110000000000000,
+            0b1111000000000000,
+            0b1111100000000000,
+            0b1111110000000000,
+            0b1111111000000000,
+            0b1111111100000000,
+            0b1111111110000000,
+            0b1111110000000000,
+            0b1101111000000000,
+            0b1000111100000000,
+            0b0000011110000000,
+            0b0000001111000000,
+            0b0000000110000000,
+            0b0000000000000000
+        };
+        for (int row = 0; row < 16; row++) {
+            for (int col = 0; col < 16; col++) {
+                if (arrow_mask[row] & (1 << (15 - col))) {
+                    /* Borde exterior cian y relleno blanco */
+                    u32 color = (col == 0 || row == col || row == 0) ? 0x0000b4d8 : 0x00ffffff;
+                    rect(px + col, py + row, 1, 1, color);
+                }
+            }
+        }
 
         flip();
     }
