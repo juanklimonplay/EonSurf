@@ -28,6 +28,7 @@
 #include "eonsurf_interactive_media.h"
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_history.h"
+#include "eonsurf_downloader.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -273,6 +274,48 @@ static inline void eonsurf_draw_dynamic_infobox_rows(int col_right_x, int table_
     }
 }
 
+
+static inline void eonsurf_draw_download_osd(uint32_t *fb, int pitch) {
+    if (g_dl.active == 0) return;
+
+    if (g_dl.active == 2 || g_dl.active == -1) {
+        if (--g_dl.status_timer <= 0) {
+            g_dl.active = 0;
+            return;
+        }
+    }
+
+    const int box_x = 340, box_y = 585, box_w = 600, box_h = 68;
+    uint32_t border_col = (g_dl.active == 2) ? 0x0000e676 : ((g_dl.active == -1) ? 0x00ff3d00 : 0x0000e5ff);
+
+    /* Fondo oscuro Titanium con borde neon segun estado */
+    draw_rounded_pill(fb, pitch, box_x, box_y, box_w, box_h, 10, 0x00101820, border_col);
+
+    char line1[128];
+    if (g_dl.active == 1) {
+        snprintf(line1, sizeof(line1), "DESCARGANDO: %s (%d%%)", g_dl.filename, g_dl.percent);
+    } else if (g_dl.active == 2) {
+        snprintf(line1, sizeof(line1), "LISTO EN XMB: %s", g_dl.dest_path);
+    } else {
+        snprintf(line1, sizeof(line1), "ERROR AL DESCARGAR: %s", g_dl.filename);
+    }
+    draw_text_clipped(box_x + 16, box_y + 12, 1, line1, 0x00ffffff, box_x + box_w - 110);
+
+    /* Riel de la barra de progreso */
+    int bar_x = box_x + 16, bar_y = box_y + 38, bar_w = box_w - 32, bar_h = 16;
+    draw_rounded_pill(fb, pitch, bar_x, bar_y, bar_w, bar_h, 6, 0x0022303c, 0x003a4a52);
+
+    /* Relleno proporcional de la barra */
+    int fill_w = (bar_w * g_dl.percent) / 100;
+    if (fill_w > 8) {
+        draw_rounded_pill(fb, pitch, bar_x, bar_y, fill_w, bar_h, 6, border_col, border_col);
+    }
+
+    /* Indicador de Megabytes descargados a la derecha */
+    char mb_label[48];
+    snprintf(mb_label, sizeof(mb_label), "%.2f MB", (double)g_dl.bytes_now / (1024.0 * 1024.0));
+    draw_text_clipped(box_x + box_w - 100, box_y + 12, 1, mb_label, 0x0000e5ff, box_x + box_w - 12);
+}
 
 static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 default_color)
 {
@@ -592,7 +635,12 @@ int main(void)
                 else {
                     const char *clicked_link = eonsurf_check_link_click(px, py);
                     if (clicked_link) {
-                        navigate_to(clicked_link);
+                        /* Interceptor de descargas directas a disco (.pkg, .zip, .iso, .rar, .7z) */
+                        if (eonsurf_is_downloadable_file(clicked_link)) {
+                            eonsurf_start_direct_download(clicked_link);
+                        } else {
+                            navigate_to(clicked_link);
+                        }
                     }
                     /* Barra de URL superior */
                     else if (py >= 10 && py <= 50 && px >= 120 && px <= 120 + (W - 440)) {
@@ -785,6 +833,9 @@ int main(void)
         draw_rounded_pill(fb[cur], W, W - 180, H - 30, 160, 24, 4, 0x00030712, 0x001e293b);
         snprintf(buf, sizeof(buf), "RSX: %d, %d", px, py);
         text_hd(W - 165, H - 23, 1, buf, 0x0038bdf8);
+
+        /* 6.5. Barra flotante de descarga OSD (.PKG / .ZIP / .ISO) */
+        eonsurf_draw_download_osd(fb[cur], W);
 
         /* 7. Puntero de alta visibilidad Titanio/Cian con borde de sombra negro */
         /* Matriz de 16x16: 0=transparente, 1=borde negro exterior, 2=interior cian brillante, 3=nucleo blanco */
