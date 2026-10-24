@@ -355,7 +355,18 @@ Gracias al desacoplamiento estricto entre el motor de renderizado (NetSurf Core 
 4. **Computación Retro & Sistemas Operativos Alternativos:**
    - **Retro PowerPC (Power Mac G4 / G5 / iMac G3):** Binarios nativos optimizados para arquitecturas PowerPC de 32 y 64 bits con extensiones AltiVec.
    - **AmigaOS 4 & MorphOS:** Integración con interfaces Reaction y MUI para computadoras retro-modernas.
-   - **Dispositivos Embebidos & Handhelds Retro:** Anbernic, Miyoo Mini, Powkiddy y Raspberry Pi con interfaces ligeras para pantallas pequeñas.
+   - **Consolas Portátiles & Handhelds Retro:** Anbernic, Miyoo Mini, Powkiddy y Steam Deck con perfiles ultra-optimizados para pantallas compactas y bajo consumo de batería.
+
+---
+
+### 🌟 Apartado de Honor: Raspberry Pi, Edge Computing & Ecosistema "IA-Friendly" (EonEdge)
+En la era moderna, la familia **Raspberry Pi (Zero 2 W, Pi 3, Pi 4, Pi 5, Compute Module 4/5)** y sus placas hermanas (Orange Pi, Radxa, Rockchip NPU) se han convertido en el núcleo de la robótica, domótica, ciberseguridad, terminales portátiles (*cyberdecks*) y proyectos con modelos de inteligencia artificial en el borde (*Edge AI*).
+
+Los navegadores convencionales (Chromium/Firefox) son monstruos que consumen más de 1.5 GB de RAM solo al abrir un par de pestañas, asfixiando por completo a una Raspberry Pi Zero o Pi 3. **EonEdge** nace como el navegador definitivo concebido desde su ADN para ser **100% IA-Friendly**:
+1. **Consumo de Memoria Ínfimo (< 25 MB de RAM):** Deja el 95% de la memoria y la CPU libres para ejecutar modelos locales (Llama.cpp, Ollama, Whisper, OpenCV) o micro-servicios en segundo plano sin colapsar el sistema operativo.
+2. **Cliente Nativo de IA en Terminal (Edge Assistant):** Conexión directa y fluida con LLMs locales (`http://localhost:11434` de Ollama) y APIs en la nube (Gemini 2.5 Flash), permitiendo resumir documentación, analizar código web o interactuar por voz con un consumo despreciable de recursos.
+3. **Modo Headless & Scraper Liviano para Agentes de IA:** Capacidad de funcionar sin interfaz gráfica como un motor de extracción de datos y navegación autónoma ultrarrápido para agentes de software y bots en Python/C.
+4. **Pantallas Táctiles Miniatura y DSI/GPIO:** Interfaz adaptativa pensada para pantallas de 3.5", 5" y 7" (DSI / HDMI / SPI) con botones táctiles grandes, navegación fluida y renderizado directo por hardware (KMS/DRM + OpenGL ES).
 
 ---
 
