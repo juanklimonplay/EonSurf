@@ -1,7 +1,14 @@
 name: build
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
 jobs:
   eonsurf-pkg:
