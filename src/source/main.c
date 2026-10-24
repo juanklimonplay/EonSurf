@@ -25,6 +25,8 @@
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
 #include "stb_image.h"
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 #include "eonsurf_interactive_media.h"
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_history.h"
