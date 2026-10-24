@@ -330,11 +330,32 @@ Detección automática del idioma configurado en el firmware de la consola media
 
 ---
 
-## 16. Portabilidad y Expansión Futura
-La arquitectura modular desacopla el núcleo de renderizado NetSurf del backend de gráficos y sockets. Esto permite compilar versiones nativas para:
-- **PlayStation Vita:** Backend con `vita2d` y aceleración SGX543MP4+.
-- **PlayStation 4 / 5:** Compatibilidad con libkernel y OpenOrbis toolchain.
-- **Sistemas Retro PPC:** PowerPC Mac (G4/G5) y AmigaOS 4.
+## 16. Filosofía de Desarrollo, Portabilidad y Ecosistema Multi-Plataforma
+
+> *"Elegí empezar desarrollando el navegador para PlayStation 3 porque sabía perfectamente que era el desafío de ingeniería más difícil de todos: domar la bestia asimétrica del Cell Broadband Engine (PPU + SPUs) y los 256 MB divididos de memoria XDR/GDDR3. Si logramos hacer volar a EonSurf en la PS3 a 60 FPS estables, con esta misma arquitectura modular tenemos el cimiento perfecto para llevar la navegación moderna a todas las plataformas históricas y sistemas embebidos."*  
+> — **JuAnKLiMoN**
+
+Gracias al desacoplamiento estricto entre el motor de renderizado (NetSurf Core 3.11), la capa de red asíncrona y los backends gráficos nativos, la base de código de EonSurf está concebida para expandirse a un ecosistema completo de dispositivos:
+
+1. **Ecosistema PlayStation:**
+   - **PlayStation Vita (EonVita):** Backend acelerado por hardware mediante `vita2d` y la GPU PowerVR SGX543MP4+, soporte de pantalla táctil OLED y suspensión en caliente instantánea.
+   - **PlayStation Portable (EonPSP):** Modo de bajo consumo de memoria RAM aprovechando los 64 MB de PSP Slim / Go / Street con caché de disco UMD/Memory Stick y fuentes bitmap.
+   - **PlayStation 4 y PlayStation 5 (EonOrbis):** Implementación nativa con toolchains abiertos (OpenOrbis / libkernel) ofreciendo navegación ligera para consolas con jailbreak que supera al navegador oficial de Sony.
+
+2. **Ecosistema Nintendo:**
+   - **Nintendo Switch (EonSwitch):** Soporte mediante `libnx` y backend NVN/deko3d a 60 FPS tanto en modo portátil como en Dock a 1080p.
+   - **Nintendo Wii U (EonWiiU):** Aprovechamiento dual de la pantalla del GamePad con stylus y salida por TV vía GX2.
+   - **Nintendo Wii & GameCube (EonRevolution):** Interfaz adaptada al Wiimote mediante `libogc` y renderizado optimizado en hardware Hollywood/Flipper.
+   - **Nintendo 3DS / New 3DS (Eon3DS):** Vista dual en pantallas superior 3D e inferior táctil vía `libctru` y citro2d.
+
+3. **Ecosistema Xbox:**
+   - **Xbox Original (EonXbox):** Backend Direct3D nativo con XDK abierto para consolas con procesador Pentium III a 733 MHz y 64 MB de RAM.
+   - **Xbox 360 (Eon360):** Aprovechamiento de los 3 núcleos simétricos Xenon (6 hilos de hardware) y memoria unificada de 512 MB vía libxenon.
+
+4. **Computación Retro & Sistemas Operativos Alternativos:**
+   - **Retro PowerPC (Power Mac G4 / G5 / iMac G3):** Binarios nativos optimizados para arquitecturas PowerPC de 32 y 64 bits con extensiones AltiVec.
+   - **AmigaOS 4 & MorphOS:** Integración con interfaces Reaction y MUI para computadoras retro-modernas.
+   - **Dispositivos Embebidos & Handhelds Retro:** Anbernic, Miyoo Mini, Powkiddy y Raspberry Pi con interfaces ligeras para pantallas pequeñas.
 
 ---
 
