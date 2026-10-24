@@ -36,7 +36,10 @@ WITH_EXPAT_BINDING := no
 WITH_HUBBUB_BINDING := yes
 EOF
 
-# 2.3 Copiar driver de superficie RSX nativo a libnsfb
+# 2.3 Excluir libsvgtiny de Makefile principal ya que depende de expat/xml
+sed -i 's/NSLIB_SVGTINY_TARG := libsvgtiny/NSLIB_SVGTINY_TARG :=/' Makefile
+
+# 2.4 Copiar driver de superficie RSX nativo a libnsfb
 echo "Inyectando driver de superficie PS3 RSX en libnsfb..."
 cp ../../ps3/surface_ps3.c libnsfb/src/surface/ps3.c
 
@@ -45,7 +48,7 @@ if ! grep -q "ps3.c" libnsfb/src/surface/Makefile; then
     sed -i 's/SURFACE_HANDLER_yes := surface.c ram.c/SURFACE_HANDLER_yes := surface.c ram.c ps3.c/' libnsfb/src/surface/Makefile
 fi
 
-# 2.4 Configurar Makefile.config de NetSurf Framebuffer
+# 2.5 Configurar Makefile.config de NetSurf Framebuffer
 echo "Configurando opciones de NetSurf Framebuffer..."
 cat << 'EOF' > netsurf/Makefile.config
 override NETSURF_FB_FRONTEND := ps3
