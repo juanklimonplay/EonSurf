@@ -5,12 +5,13 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define MAX_CLEAN_LINKS 16
+#define MAX_CLEAN_LINKS 128
 
 typedef struct {
     char label[128];
     char url[256];
     int16_t x, y, w, h; /* Bounding box en pantalla para colisiones */
+    uint8_t visible;    /* 1 si está dentro del área visible actual */
 } EonCleanLink;
 
 /* 
@@ -81,6 +82,7 @@ static inline void eonsurf_format_markdown_and_links(const char *src, char *dst,
                         size_t ulen = url_len < 255 ? url_len : 255;
                         memcpy(out_links[idx].url, close_bracket + 2, ulen);
                         out_links[idx].url[ulen] = '\0';
+                        out_links[idx].visible = 1;
                     }
 
                     /* Inyectar marca de color de link (\x01) + Texto + fin de color (\x02) */
