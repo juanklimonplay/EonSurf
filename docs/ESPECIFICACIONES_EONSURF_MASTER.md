@@ -412,3 +412,26 @@ Con la integración del camuflaje JA3 para superar Cloudflare, el Modo Lector ac
 1. **Burbuja PKG Instalable (Out-of-the-Box):** Publicación directa del binario empaquetado y firmado (`EonSurf-Navegador.pkg`) en GitHub Releases para instalación directa en consolas físicas (CFW Evilnat / PS3HEN) y RPCS3, evitando la barrera de compilar desde código fuente.
 2. **Lanzamiento Oficial en PSX-Place:** Presentación del proyecto en el foro central de la scene mundial, documentando la integración de las llamadas al sistema y sockets loopback de webMAN MOD creados por Aldo Vargas.
 3. **Demostración en Video a 60 FPS:** Publicación de clips técnicos demostrando la navegación fluida, reproducción de audio en hardware y renderizado en televisores modernos.
+
+---
+
+## 20. Protocolos de Blindaje Crítico y Robustez de Silicio (Fase de Producción)
+
+Para garantizar estabilidad inquebrantable frente a las condiciones más adversas del mundo real:
+
+### 1. Mini-Parser FSM de Flujo en PPU1 (Cero Falsos Positivos en HTML)
+- **Problema:** El uso de `strstr()` plano para descartar `<script>` o inline CSS puede mutilar bloques de texto legítimos o strings de JavaScript que contengan fragmentos de etiquetas.
+- **Implementación:** Sustitución de búsquedas planas por un **Autómata de Estados Finitos (FSM)** de un solo paso en la PPU1 (`STATE_TEXT`, `STATE_TAG_NAME`, `STATE_INSIDE_SCRIPT`, `STATE_INSIDE_COMMENT`, `STATE_INSIDE_STYLE`).
+- Procesa el búfer de 128 KB en tiempo lineal $O(N)$ y con apenas 8 bytes de estado en RAM, filtrando scripts maliciosos y elementos pesados con precisión sintáctica absoluta antes de pasárselos a NetSurf.
+
+### 2. Aislamiento Asíncrono de EonAI REST (Worker Thread Dedicado)
+- **Problema:** Si el usuario solicita resúmenes consecutivos de Gemini 2.5 Flash, el handshake TLS y la transferencia de paquetes JSON pesados en la PPU principal pueden causar micro-tirones (stuttering) en el renderizado de la interfaz gráfica.
+- **Implementación:** Delegación total de las consultas de IA a un hilo worker secundario dedicado (`sys_ppu_thread_create` con prioridad baja 1500). El hilo principal continúa refrescando el búfer gráfico a 60 Hz sin bloquearse jamás mientras espera la respuesta estructurada de Gemini.
+
+### 3. Cola de Prioridad en Viewport para Mipmaps (Anti-Borroso Indefinido)
+- **Problema:** Si el usuario realiza toques intermitentes al stick analógico cada 400 ms, el temporizador de 500 ms se reiniciaría indefinidamente, manteniendo las imágenes en baja resolución de forma perpetua.
+- **Implementación:** Monitoreo del área visible (Viewport). Si una imagen cubre más del 70% del área de pantalla activa, el sistema omite la espera de 500 ms y despierta de inmediato a una SPU libre para decodificar la textura en alta resolución, inyectando instrucciones `dcbt` (Data Cache Block Touch) anticipadas para saturar la memoria caché.
+
+### 4. Rescate Térmico y Redirección de Descargas USB ante Desconexión en Caliente
+- **Problema:** Si el usuario extrae intempestivamente el disco USB o pendrive NTFS mientras descarga un archivo de 10 GB, la pérdida del descriptor de archivo puede causar un pánico del kernel Lv2 (el temido "triple pitido").
+- **Implementación:** Antes de cada escritura en bloques de 64 KB del búfer circular, se verifica la presencia del dispositivo mediante `NTFS_Test_Device()`. Si el bus USB reporta fallo de E/S o desconexión, el hilo de descarga desvía instantáneamente la escritura a la memoria interna (`/dev_hdd0/downloads/`) como zona de rescate temporal, emitiendo una alerta flotante en pantalla (`vshtask_notify`) sin colgar jamás el sistema operativo.
