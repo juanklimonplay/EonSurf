@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>EonSurf - Dashboard</title>
+    <style>
+        :root {
+            --bg-base: #0c0f17;
+            --card-bg: #161b26;
+            --card-border: #242d3d;
+            --accent-cyan: #00e5ff;
+            --accent-glow: rgba(0, 229, 255, 0.4);
+            --text-main: #f0f4f8;
+            --text-dim: #8a99ad;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 30px 60px;
+            overflow: hidden;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+            padding-bottom: 15px;
+        }
+
+        .logo-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-orb {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #00e5ff 0%, #0066cc 100%);
+            box-shadow: 0 0 12px var(--accent-cyan);
+        }
+
+        .logo-title {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        .logo-title span {
+            color: var(--accent-cyan);
+        }
+
+        .widget-clock {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--text-main);
+            letter-spacing: 1px;
+        }
+
+        .widget-weather {
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .widget-weather span {
+            color: var(--accent-cyan);
+            font-weight: 700;
+        }
+
+        .search-section {
+            margin: 25px 0 15px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .search-box {
+            width: 80%;
+            max-width: 900px;
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 40px;
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            transition: all 0.25s ease;
+        }
+
+        .search-box:focus-within, .search-box.focused {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 20px var(--accent-glow);
+            transform: scale(1.02);
+        }
+
+        .search-icon {
+            font-size: 22px;
+            margin-right: 15px;
+            color: var(--accent-cyan);
+        }
+
+        .search-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 20px;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-dim);
+            font-size: 18px;
+        }
+
+        .search-hint {
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .search-hint b {
+            color: var(--accent-cyan);
+        }
+
+        .grid-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 16px;
+            padding: 18px 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .card:hover, .card.focused {
+            border-color: var(--accent-cyan);
+            transform: translateY(-4px) scale(1.04);
+            box-shadow: 0 10px 25px var(--accent-glow);
+            background: #1e2535;
+        }
+
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: #111520;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .card-info {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-desc {
+            font-size: 12px;
+            color: var(--text-dim);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 12px;
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .shortcuts-bar {
+            display: flex;
+            gap: 18px;
+        }
+
+        .btn-key {
+            background: #242c3d;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 11px;
+            margin-right: 4px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .author-tag {
+            color: var(--accent-cyan);
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. Header con Widgets -->
+    <header>
+        <div class="logo-box">
+            <div class="logo-orb"></div>
+            <div class="logo-title">Eon<span>Surf</span></div>
+        </div>
+        <div class="widget-clock" id="clockWidget">21:45 • Vie 24 Oct</div>
+        <div class="widget-weather" id="weatherWidget">
+            ☀️ <span id="tempVal">22°C</span> <span id="cityVal">Buenos Aires</span>
+        </div>
+    </header>
+
+    <!-- 2. Barra de Búsqueda y Códigos Downloader -->
+    <section class="search-section">
+        <div class="search-box" id="searchBox">
+            <div class="search-icon">🔍</div>
+            <input type="text" class="search-input" id="searchInput" placeholder="Buscar o ingresar dirección web / Código numérico Downloader (Start)..." autocomplete="off">
+        </div>
+        <div class="search-hint">
+            💡 Escribe una web o ingresa un <b>Código de Downloader</b> (ej. 75077) para ir directo a la descarga.
+        </div>
+    </section>
+
+    <!-- 3. Accesos Rápidos (Speed Dial) -->
+    <main class="grid-container">
+        <div class="grid-cards">
+            <a href="https://lite.invidious.io" class="card focused">
+                <div class="card-icon" style="color:#ff4444;">▶</div>
+                <div class="card-info">
+                    <div class="card-title">Yo! Player</div>
+                    <div class="card-desc">YouTube TV Ligero</div>
+                </div>
+            </a>
+
+            <a href="https://es.m.wikipedia.org" class="card">
+                <div class="card-icon" style="color:#ffffff;">W</div>
+                <div class="card-info">
+                    <div class="card-title">Wikipedia</div>
+                    <div class="card-desc">Enciclopedia Rápida</div>
+                </div>
+            </a>
+
+            <a href="https://www.radio-browser.info" class="card">
+                <div class="card-icon" style="color:#ffaa00;">📻</div>
+                <div class="card-info">
+                    <div class="card-title">Radios</div>
+                    <div class="card-desc">Música y Noticias</div>
+                </div>
+            </a>
+
+            <a href="https://www.mediafire.com" class="card">
+                <div class="card-icon" style="color:#00aaff;">☁</div>
+                <div class="card-info">
+                    <div class="card-title">MediaFire</div>
+                    <div class="card-desc">Descargas Directas</div>
+                </div>
+            </a>
+
+            <a href="file:///dev_usb000/" class="card">
+                <div class="card-icon" style="color:#00e5ff;">💾</div>
+                <div class="card-info">
+                    <div class="card-title">Disco PS3 / USB</div>
+                    <div class="card-desc">Explorador de Archivos</div>
+                </div>
+            </a>
+
+            <a href="http://127.0.0.1:80" class="card">
+                <div class="card-icon" style="color:#00ff88;">⚙</div>
+                <div class="card-info">
+                    <div class="card-title">webMAN MOD</div>
+                    <div class="card-desc">Control de Consola</div>
+                </div>
+            </a>
+
+            <a href="https://html.duckduckgo.com/html/" class="card">
+                <div class="card-icon" style="color:#ff8800;">🦆</div>
+                <div class="card-info">
+                    <div class="card-title">DuckDuckGo</div>
+                    <div class="card-desc">Buscador Limpio</div>
+                </div>
+            </a>
+
+            <a href="#settings" class="card">
+                <div class="card-icon" style="color:#c084fc;">➕</div>
+                <div class="card-info">
+                    <div class="card-title">Ajustes</div>
+                    <div class="card-desc">Temas y Opciones</div>
+                </div>
+            </a>
+        </div>
+    </main>
+
+    <!-- 4. Barra Inferior con Atajos y Firma -->
+    <footer>
+        <div class="shortcuts-bar">
+            <span><span class="btn-key">Start</span> Teclado</span>
+            <span><span class="btn-key">□</span> Modo Lectura</span>
+            <span><span class="btn-key">R3</span> Velocidad</span>
+            <span><span class="btn-key">Select</span> Opciones</span>
+        </div>
+        <div>
+            EonSurf by <span class="author-tag">JuAnKLiMoN</span> • 20 Años de PlayStation 3
+        </div>
+    </footer>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+            const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            
+            const hours = String(now.getHours()).padStart(2, '0');
+            const mins = String(now.getMinutes()).padStart(2, '0');
+            const dayName = days[now.getDay()];
+            const dayNum = now.getDate();
+            const monthName = months[now.getMonth()];
+
+            document.getElementById('clockWidget').innerText = `${hours}:${mins} • ${dayName} ${dayNum} ${monthName}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        const input = document.getElementById('searchInput');
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const val = input.value.trim();
+                if (!val) return;
+
+                if (/^\d{4,}$/.test(val)) {
+                    window.location.href = 'https://go.aftvnews.com/' + val;
+                } else if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('file://')) {
+                    window.location.href = val;
+                } else if (val.includes('.') && !val.includes(' ')) {
+                    window.location.href = 'https://' + val;
+                } else {
+                    window.location.href = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(val);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
