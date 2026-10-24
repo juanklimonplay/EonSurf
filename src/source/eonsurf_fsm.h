@@ -8,44 +8,7 @@
 
 #define EONSURF_MAX_DOM_NODES 3000
 
-typedef enum {
-    FSM_STATE_TEXT = 0,
-    FSM_STATE_TAG_OPEN,
-    FSM_STATE_TAG_NAME,
-    FSM_STATE_TAG_ATTRS,
-    FSM_STATE_COMMENT,
-    FSM_STATE_SKIP_SCRIPT,
-    FSM_STATE_SKIP_STYLE,
-    FSM_STATE_SKIP_SVG,
-    FSM_STATE_SKIP_BOILERPLATE, /* <nav>, <footer>, <aside>, <header> */
-    FSM_STATE_TRUNCATED
-} eon_fsm_state_t;
-
-typedef struct {
-    eon_fsm_state_t state;
-    uint32_t node_count;
-    int is_closing_tag;
-    char tag_buf[32];
-    uint8_t tag_len;
-    char tail_window[16];
-    char in_quote;
-} __attribute__((aligned(128))) eon_fsm_ctx_t;
-
-static inline void eonsurf_fsm_init(eon_fsm_ctx_t *ctx)
-{
-    if (!ctx) return;
-    memset(ctx, 0, sizeof(eon_fsm_ctx_t));
-    ctx->state = FSM_STATE_TEXT;
-}
-
-static inline void eonsurf_fsm_push_window(eon_fsm_ctx_t *ctx, char c)
-{
-    memmove(ctx->tail_window, ctx->tail_window + 1, sizeof(ctx->tail_window) - 2);
-    ctx->tail_window[sizeof(ctx->tail_window) - 2] = (char)tolower((unsigned char)c);
-    ctx->tail_window[sizeof(ctx->tail_window) - 1] = '\0';
-}
-
-/* Extrae texto plano continuo y limpio en tiempo O(N) descartando scripts, estilos y etiquetas */
+/* Extrae texto plano continuo y limpio en tiempo O(N) descartando scripts, estilos, comentarios y tags */
 static inline size_t eonsurf_fsm_extract_text(
     const char *in_buf,
     size_t in_len,
@@ -53,124 +16,130 @@ static inline size_t eonsurf_fsm_extract_text(
     size_t out_max
 ) {
     if (!in_buf || !out_buf || out_max == 0) return 0;
-    
-    eon_fsm_ctx_t ctx;
-    eonsurf_fsm_init(&ctx);
 
     size_t out_len = 0;
+    size_t i = 0;
+    int in_tag = 0;
+    int in_quote = 0;
+    int in_comment = 0;
     char skip_tag[16] = "";
+    char tail_window[16] = "";
+    char tag_name[32] = "";
+    uint8_t tag_len = 0;
+    int in_tag_name = 0;
 
-    for (size_t i = 0; i < in_len && out_len + 1 < out_max; i++) {
+    while (i < in_len && out_len + 1 < out_max) {
         char c = in_buf[i];
-        eonsurf_fsm_push_window(&ctx, c);
 
-        /* Si estamos descartando un bloque especial (script, style, svg, header, nav, footer, aside) */
-        if (skip_tag[0] != '\0') {
-            char close_pattern[24];
-            snprintf(close_pattern, sizeof(close_pattern), "</%s>", skip_tag);
-            if (strstr(ctx.tail_window, close_pattern) != NULL) {
-                skip_tag[0] = '\0';
-                ctx.state = FSM_STATE_TEXT;
+        /* Mantener ventana deslizante para detectar cierres de tags especiales o comentarios */
+        memmove(tail_window, tail_window + 1, sizeof(tail_window) - 2);
+        tail_window[sizeof(tail_window) - 2] = (char)tolower((unsigned char)c);
+        tail_window[sizeof(tail_window) - 1] = '\0';
+
+        /* 1. Descartar comentarios <!-- ... --> */
+        if (in_comment) {
+            if (strstr(tail_window, "-->") != NULL) {
+                in_comment = 0;
             }
+            i++;
             continue;
         }
 
-        switch (ctx.state) {
-            case FSM_STATE_TEXT:
-                if (c == '<') {
-                    ctx.state = FSM_STATE_TAG_OPEN;
-                    ctx.is_closing_tag = 0;
-                    ctx.tag_len = 0;
-                    ctx.in_quote = 0;
-                } else {
-                    if (c == '\r' || c == '\n' || c == '\t') c = ' ';
-                    if (c == ' ' && out_len > 0 && out_buf[out_len - 1] == ' ') {
-                        /* Evitar acumular multiples espacios consecutivos */
-                        continue;
-                    }
-                    if ((unsigned char)c >= 32 && (unsigned char)c <= 126) {
-                        out_buf[out_len++] = c;
-                    }
+        /* 2. Descartar bloques completos como <script>...</script>, <style>...</style>, etc. */
+        if (skip_tag[0] != '\0') {
+            char close_pattern[24];
+            snprintf(close_pattern, sizeof(close_pattern), "</%s>", skip_tag);
+            if (strstr(tail_window, close_pattern) != NULL) {
+                skip_tag[0] = '\0';
+            }
+            i++;
+            continue;
+        }
+
+        /* 3. Modo texto libre (fuera de etiquetas HTML) */
+        if (!in_tag) {
+            if (c == '<') {
+                /* Detectar si es un comentario <!-- */
+                if (i + 3 < in_len && in_buf[i+1] == '!' && in_buf[i+2] == '-' && in_buf[i+3] == '-') {
+                    in_comment = 1;
+                    i += 4;
+                    continue;
                 }
-                break;
-
-            case FSM_STATE_TAG_OPEN:
-                if (c == '!') {
-                    ctx.state = FSM_STATE_COMMENT;
-                } else if (c == '/') {
-                    ctx.is_closing_tag = 1;
-                    ctx.state = FSM_STATE_TAG_NAME;
-                } else if (isalpha((unsigned char)c)) {
-                    ctx.state = FSM_STATE_TAG_NAME;
-                    ctx.tag_buf[ctx.tag_len++] = (char)tolower((unsigned char)c);
-                } else {
-                    ctx.state = FSM_STATE_TEXT;
+                /* Detectar si es un doctype <!DOCTYPE ... > */
+                if (i + 8 < in_len && tolower((unsigned char)in_buf[i+1]) == '!' &&
+                    tolower((unsigned char)in_buf[i+2]) == 'd' &&
+                    tolower((unsigned char)in_buf[i+3]) == 'o' &&
+                    tolower((unsigned char)in_buf[i+4]) == 'c' &&
+                    tolower((unsigned char)in_buf[i+5]) == 't' &&
+                    tolower((unsigned char)in_buf[i+6]) == 'y' &&
+                    tolower((unsigned char)in_buf[i+7]) == 'p' &&
+                    tolower((unsigned char)in_buf[i+8]) == 'e') {
+                    while (i < in_len && in_buf[i] != '>') i++;
+                    if (i < in_len) i++;
+                    continue;
                 }
-                break;
 
-            case FSM_STATE_TAG_NAME:
-                if (isalnum((unsigned char)c) || c == '-' || c == '_') {
-                    if (ctx.tag_len < sizeof(ctx.tag_buf) - 1) {
-                        ctx.tag_buf[ctx.tag_len++] = (char)tolower((unsigned char)c);
+                in_tag = 1;
+                tag_len = 0;
+                tag_name[0] = '\0';
+                in_tag_name = 1;
+                in_quote = 0;
+            } else {
+                if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+                if (c == ' ' && out_len > 0 && out_buf[out_len - 1] == ' ') {
+                    /* Evitar acumular espacios repetidos */
+                } else if ((unsigned char)c >= 32 && (unsigned char)c <= 126) {
+                    out_buf[out_len++] = c;
+                }
+            }
+        } else {
+            /* 4. Modo dentro de etiqueta HTML < ... > */
+            if (in_tag_name) {
+                if (isalpha((unsigned char)c) || (c == '/' && tag_len == 0)) {
+                    if (tag_len < sizeof(tag_name) - 1) {
+                        tag_name[tag_len++] = (char)tolower((unsigned char)c);
+                        tag_name[tag_len] = '\0';
                     }
                 } else {
-                    ctx.tag_buf[ctx.tag_len] = '\0';
-
-                    /* Detectar bloques que deben descartarse completamente con su contenido interior */
-                    if (!ctx.is_closing_tag) {
-                        if (strcmp(ctx.tag_buf, "script") == 0 ||
-                            strcmp(ctx.tag_buf, "style") == 0 ||
-                            strcmp(ctx.tag_buf, "svg") == 0 ||
-                            strcmp(ctx.tag_buf, "header") == 0 ||
-                            strcmp(ctx.tag_buf, "nav") == 0 ||
-                            strcmp(ctx.tag_buf, "footer") == 0 ||
-                            strcmp(ctx.tag_buf, "aside") == 0) {
-                            strncpy(skip_tag, ctx.tag_buf, sizeof(skip_tag) - 1);
+                    in_tag_name = 0;
+                    const char *t = (tag_name[0] == '/') ? &tag_name[1] : tag_name;
+                    if (tag_name[0] != '/') {
+                        if (strcmp(t, "script") == 0 ||
+                            strcmp(t, "style") == 0 ||
+                            strcmp(t, "svg") == 0 ||
+                            strcmp(t, "header") == 0 ||
+                            strcmp(t, "nav") == 0 ||
+                            strcmp(t, "footer") == 0 ||
+                            strcmp(t, "aside") == 0) {
+                            strncpy(skip_tag, t, sizeof(skip_tag) - 1);
                             skip_tag[sizeof(skip_tag) - 1] = '\0';
-                            ctx.state = FSM_STATE_TEXT;
-                            break;
+                            in_tag = 0;
+                            i++;
+                            continue;
                         }
-                    }
-
-                    if (c == '>') {
-                        ctx.state = FSM_STATE_TEXT;
-                        if (out_len > 0 && out_buf[out_len - 1] != ' ') {
-                            out_buf[out_len++] = ' ';
-                        }
-                    } else {
-                        ctx.state = FSM_STATE_TAG_ATTRS;
-                        if (c == '\"' || c == '\'') ctx.in_quote = c;
                     }
                 }
-                break;
+            }
 
-            case FSM_STATE_TAG_ATTRS:
-                if (ctx.in_quote != 0) {
-                    if (c == ctx.in_quote) {
-                        ctx.in_quote = 0;
+            if (in_tag) {
+                if (in_quote != 0) {
+                    if (c == in_quote) {
+                        in_quote = 0;
                     }
                 } else {
                     if (c == '\"' || c == '\'') {
-                        ctx.in_quote = c;
+                        in_quote = c;
                     } else if (c == '>') {
-                        ctx.state = FSM_STATE_TEXT;
+                        in_tag = 0;
                         if (out_len > 0 && out_buf[out_len - 1] != ' ') {
                             out_buf[out_len++] = ' ';
                         }
                     }
                 }
-                break;
-
-            case FSM_STATE_COMMENT:
-                if (strstr(ctx.tail_window, "-->") != NULL) {
-                    ctx.state = FSM_STATE_TEXT;
-                }
-                break;
-
-            default:
-                ctx.state = FSM_STATE_TEXT;
-                break;
+            }
         }
+
+        i++;
     }
 
     out_buf[out_len] = '\0';

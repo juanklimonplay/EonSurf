@@ -297,12 +297,12 @@ int main(void)
                             navigate_to(url_ingresada);
                         }
                     }
-                } else if (py >= 220 && py <= 270) {
-                    if (px >= 60 && px <= 340) {
+                } else if (py >= 65 && py <= 115) {
+                    if (px >= 60 && px <= 330) {
                         navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
-                    } else if (px >= 360 && px <= 640) {
+                    } else if (px >= 350 && px <= 620) {
                         navigate_to("https://gemini.google.com");
-                    } else if (px >= 660 && px <= 940) {
+                    } else if (px >= 640 && px <= 910) {
                         navigate_to("https://www.psx-place.com");
                     }
                 }
