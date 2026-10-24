@@ -380,3 +380,45 @@ Registro crÃ­tico de problemas encontrados durante el desarrollo de EonSurf para
 * **Canal Directo de Novedades y Changelog ("QuÃ© hay de nuevo"):**  
   Una pestaÃ±a en Ajustes que muestra la lista de mejoras aÃ±adidas en la Ãºltima actualizaciÃ³n para que el usuario conozca las nuevas funciones apenas actualice.
 
+
+---
+
+## 20. Blindaje Técnico de Bajo Nivel y Optimización Extrema (7 Pilares de Rendimiento PS3)
+
+Para garantizar estabilidad absoluta de nivel comercial y prevenir cuellos de botella del Kernel Lv2 y el procesador Cell:
+
+### 1. Pila de Red y Sockets en Lv2 (\sys_net\ / \libcurl\)
+- **Límites Estrictos de Conexión (\eonsurf.cfg\):** Configurar \max_fetchers: 8\, \max_fetchers_per_host: 4\ y \max_cached_fetch_handles: 4\ (\CURLMOPT_MAX_HOST_CONNECTIONS\). Previene el agotamiento de descriptores de socket en el kernel Lv2.
+- **Agrandar Buffer TCP (\SO_RCVBUF\):** Aplicar \setsockopt()\ con \SO_RCVBUF\ a 256 KB (frente a los 32 KB por defecto de Sony) para maximizar descargas de archivos pesados.
+- **Reutilización de Sesiones SSL (\CURLOPT_SSL_SESSIONID_CACHE\):** Habilitado en 1L para guardar el Session ID/Ticket y evitar renegociar TLS en páginas del mismo dominio.
+
+### 2. Memoria XDR y Asignador Custom Anti-Fragmentación (TLSF)
+- **El problema de Newlib:** El \malloc()\ básico fragmenta el Heap al crear y destruir miles de nodos DOM/CSS pequeños.
+- **Solución:** Integración de la librería **TLSF** (*Two-Level Segregated Fit*) de tiempo constante \(1)\$.
+- **Pool Dedicado:** Reserva al iniciar de un bloque único de **64 MB** en RAM XDR con \sysMemAllocate()\. Todas las asignaciones de \libdom\, \libcss\ y \libhubbub\ se realizan dentro de este pool y se resetean atómicamente por pestaña (\rena_destroy()\).
+
+### 3. Descargador Directo a \/dev_hdd0/packages\ a 60 FPS
+- **Ring Buffer en RAM (1 a 2 MB):** Evita la saturación del bus SATA I de la PS3. Se acumulan fragmentos de red en RAM y se realiza un único \sysFsWrite()\ secuencial desde un hilo secundario con prioridad Lv2 baja (\1001\).
+- **Pre-asignación con \sysFsFtruncate\:** Comprueba el encabezado \Content-Length\ y el espacio libre en disco antes de descargar.
+- **Descargas Atómicas (\.part\):** Guarda como \rchivo.pkg.part\ y renombra a \.pkg\ únicamente tras validar el tamaño final o suma de verificación (checksum).
+
+### 4. Fuentes Nativas del Firmware y Atlas de Glifos en XDR
+- **Sin Inflar el PKG:** Carga directa de las fuentes TrueType oficiales del firmware en \/dev_flash/data/font/SCE-PS3-VR-R-LATIN.TTF\ (y \ROD-R\).
+- **Atlas de Glifos Rasterizados:** Cada carácter se renderiza una única vez con FreeType2 en una textura atlas en RAM XDR; el scroll realiza blitting directo por DMA al RSX sin recalcular curvas vectoriales en la CPU.
+
+### 5. AdBlocker Ultraligero Nativo por Hash FNV-1a (Cero Regex)
+- **Sin Motor Regex Pesado:** Evita evaluar expresiones regulares complejas en la PPU.
+- **Tabla Binaria Compacta (120 KB):** Lista de 15.000 dominios de telemetría y anuncios pre-hasheados con FNV-1a (64-bit). Se evalúa en tiempo \(1)\$ antes de que el motor resuelva la consulta DNS.
+
+### 6. Integración con el Sistema Operativo PS3 y Calidad de Vida (QoL)
+- **Inhibición de Salvapantallas:** Llamada periódica de actividad al sistema para evitar que el XMB apague la pantalla durante la lectura o descargas largas.
+- **Salida Limpia con Botón PS (\SYSUTIL_EXIT_GAME\):** Cierra descriptores abiertos en disco, detiene hilos de SPU y libera el contexto RSX para evitar triples pitidos de la consola.
+- **Certificados CA Actualizados (\cacert.pem\):** Ubicados en \/dev_hdd0/game/EONSURF01/USRDIR/certs/cacert.pem\, actualizables por FTP o pendrive.
+
+### 7. Alineación Estricta DMA para SPUs (MFC)
+- **Alineación a 128 Bytes:** Todos los descriptores de la cola circular FIFO y buffers de paquetes SPU se declaran con \__attribute__((aligned(128)))\ y transferencias múltiplos de 16 bytes para alcanzar el ancho de banda pico del bus EIB (204.8 GB/s).
+
+### 4. Resolución Obligatoria de Stubs PRX con \sprxlinker\:
+* **Causa:** Un binario ELF compilado directamente con \powerpc64-ps3-elf-gcc\ contiene stubs sin resolver (\ x00000000\) para las librerías dinámicas del sistema de Sony (\sysutil\, \sx\, \
+et\, \io\). Al ejecutarse en RPCS3 o consola real, cualquier llamada provoca un salto a memoria no mapeada con error: *\VM: Access violation executing location 0x7c0802a4 / Unknown opcode: 0x00000000\*.
+* **Solución Obligatoria:** Ejecutar siempre **\sprxlinker EonSurf.elf\** inmediatamente después de la compilación de GCC y antes de la firma con \make_fself\. \sprxlinker\ parchea los stubs del ELF vinculándolos con la tabla OPD real del sistema operativo PS3.
