@@ -120,23 +120,27 @@ struct HttpMemoryBuffer {
 
 static size_t http_write_callback(void *contents, size_t size, size_t nmemb, void *userp)
 {
-    size_t realsize = size * nmemb;
+    size_t total = size * nmemb;
     struct HttpMemoryBuffer *mem = (struct HttpMemoryBuffer *)userp;
 
-    /* Limitar a 64 KB para no desbordar RAM en páginas gigantes */
-    if (mem->size + realsize > 64 * 1024) {
-        realsize = (64 * 1024) - mem->size;
-        if (realsize == 0) return 0;
+    /* Aceptamos hasta 128 KB en memoria XDR para el cuerpo de la página */
+    if (mem->size < 128 * 1024) {
+        size_t to_copy = total;
+        if (mem->size + to_copy > 128 * 1024) {
+            to_copy = (128 * 1024) - mem->size;
+        }
+
+        char *ptr = realloc(mem->data, mem->size + to_copy + 1);
+        if (ptr) {
+            mem->data = ptr;
+            memcpy(&(mem->data[mem->size]), contents, to_copy);
+            mem->size += to_copy;
+            mem->data[mem->size] = 0;
+        }
     }
 
-    char *ptr = realloc(mem->data, mem->size + realsize + 1);
-    if (!ptr) return 0;
-
-    mem->data = ptr;
-    memcpy(&(mem->data[mem->size]), contents, realsize);
-    mem->size += realsize;
-    mem->data[mem->size] = 0;
-    return size * nmemb;
+    /* SIEMPRE devolver 'total' para que libcurl sepa que los bytes fueron procesados y no aborte con CURLE_WRITE_ERROR (23) */
+    return total;
 }
 
 /* Extrae texto legible descartando tags <...> */
