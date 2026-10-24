@@ -1,0 +1,55 @@
+name: EonSurf NetSurf Full Core CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "build-netsurf-framebuffer-ps3" ]
+
+jobs:
+  netsurf-core:
+    runs-on: ubuntu-24.04
+    env:
+      TITLE_ID: "EONS00001"
+      APP_TITLE: "EonSurf Web Browser"
+      CONTENT_ID: "UP0001-EONS00001_00-0000000000000000"
+      PS3DEV: "/usr/local/ps3dev"
+      PSL1GHT: "/usr/local/ps3dev"
+
+    steps:
+      - name: 1. Checkout
+        uses: actions/checkout@v4
+
+      - name: 2. Dependencias del host
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texinfo flex bison libgmp-dev libelf-dev libmpfr-dev libmpc-dev \
+            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl
+
+      - name: 3. Preparar permisos para cache de ps3dev
+        run: |
+          sudo mkdir -p /usr/local/ps3dev
+          sudo chown -R $USER:$USER /usr/local/ps3dev
+
+      - name: 4. Cache del kit (ps3toolchain + PSL1GHT + ps3libraries)
+        id: kit
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/ps3dev
+          key: ps3dev-${{ hashFiles('docs/TOOLCHAIN.md', 'tools/build-kit.sh') }}
+
+      - name: 5. Compilar el kit si no está en caché
+        if: steps.kit.outputs.cache-hit != 'true'
+        run: sudo -E bash tools/build-kit.sh
+
+      - name: 6. Configurar PATH del toolchain
+        run: |
+          echo "${PS3DEV}/bin" >> $GITHUB_PATH
+          echo "${PS3DEV}/ppu/bin" >> $GITHUB_PATH
+          echo "${PS3DEV}/spu/bin" >> $GITHUB_PATH
+
+      - name: 7. Ejecutar compilación del core NetSurf
+        run: |
+          export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin:${PS3DEV}/spu/bin
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev
+          bash tools/test_netsurf_build.sh
