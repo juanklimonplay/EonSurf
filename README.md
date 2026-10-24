@@ -101,8 +101,8 @@ Herramientas únicas diseñadas específicamente para el ecosistema moderno de P
 ---
 
 ## 6. Integración con el Sistema Operativo y Calidad de Vida (QoL)
-1. **Teclado Sony OSK Oficial (`sysutil/osk`):**  
-   Integración asíncrona no bloqueante. Al pulsar un campo de texto se invoca el teclado flotante nativo de Sony conservando el renderizado de la página a 60 FPS.
+1. **Integración No Bloqueante con el Menú del Sistema (XMB / OSK):**  
+   Registro en `SYSUTIL_EVENT_SLOT0` capturando `SYSUTIL_DRAW_BEGIN` y `SYSUTIL_DRAW_END`. Si el usuario pulsa el Botón PS para abrir el XMB in-game o aparece el teclado oficial de Sony, EonSurf pausa automáticamente los comandos DMA hacia el RSX para no superponer buffers ni provocar congelamientos con pantalla negra.
 2. **Descargador en Segundo Plano con Encolado Dual:**  
    Descargas concurrentes sin congelar la navegación. Soporta generación de archivos de tarea `.pdb` en `/dev_hdd0/vsh/task/` para transferir la descarga a la cola oficial del XMB si el usuario desea apagar el navegador.
 3. **Manejo de Marcadores e Historial con Write-Behind:**  
@@ -144,7 +144,7 @@ La arquitectura de hardware de la PS3 cuenta con dos bloques de 256 MB con carac
 ```
 
 1. **Pila de Red en Kernel Lv2 (`sys_net` / `libcurl`):** Sockets asíncronos no bloqueantes con buffers de recepción optimizados de 128 KB en XDR.
-2. **Memoria XDR y Asignador Custom TLSF:** Pool de 64 MB reservado al arranque con `sysMemAllocate()`. La gestión se realiza con el asignador TLSF con complejidad temporal O(1) sin fragmentación. Al cerrar una pestaña se invoca `arena_destroy()`, liberando la memoria de forma instantánea.
+2. **Memoria XDR y Asignador Custom TLSF:** Pool de 64 MB alineado a 128 bytes reservado al inicio de `main()` mediante `memalign(128, 64 * 1024 * 1024)` y entregado a `tlsf_create_with_pool()`, conviviendo pacíficamente con el heap de Newlib/sbrk sin colapsar por error `0x80010004` (`ENOMEM`). La gestión se realiza con el asignador TLSF con complejidad temporal O(1) sin fragmentación. Al cerrar una pestaña se invoca `arena_destroy()`, liberando la memoria de forma instantánea.
 3. **Descargador Directo a `/dev_hdd0/packages/` a 60 FPS:** Descarga en búfer de doble anillo (Double Ring Buffer) escribiendo en bloques de 64 KB sin pausar la PPU.
 4. **Fuentes Nativas del Firmware y Atlas de Glifos:** Enlace directo con las fuentes TrueType de `/dev_flash/data/font/` (SCE-PS3-VR-R-LATIN.TTF), ahorrando 15 MB de RAM.
 5. **AdBlocker Ultraligero por Hash FNV-1a:** Tabla binaria pre-ordenada de 120 KB con más de 12.000 dominios rastreadores. Evaluación mediante `bsearch()` en tiempo O(log N) con cero regex.
@@ -179,8 +179,8 @@ La arquitectura de hardware de la PS3 cuenta con dos bloques de 256 MB con carac
 ---
 
 ## 11. Los 5 Pilares de Compatibilidad de la Scene
-1. **Detección Dinámica del Entorno:**  
-   Interrogación de la syscall 8 con opcodes `0x1337` (PS3HEN) y `0x7000` (CFW Cobra/Evilnat). Si la llamada devuelve `0x80010003` (`ENOSYS`), el navegador entra en modo seguro indicando que las syscalls fueron deshabilitadas para acceso a PSN.
+1. **Detección Dinámica del Entorno (Protocolo webMAN MOD):**  
+   Interrogación prioritaria de la syscall 8 con opcode `0x7000` (`SYSCALL8_OPCODE_GET_VERSION`). Si devuelve versión válida distinta de 0, la llamada está activa; acto seguido se ejecuta `0x1337` (`SYSCALL8_OPCODE_IS_HEN`) para distinguir con exactitud matemática entre PS3HEN y Custom Firmware Evilnat/Cobra sin recibir valores residuales. Si la llamada devuelve `0x80010003` (`ENOSYS`), el navegador entra en modo seguro indicando que las syscalls fueron deshabilitadas para acceso a PSN.
 2. **Scroll a 60 FPS con Ring Buffer Virtual (Hardware Wrap-Around):**  
    Implementación de coordenadas UV circulares en el RSX. Al desplazarse por una página larga, solo se transfieren por DMA las franjas sucias (Dirty Strips) de nueva información, eliminando el re-envío de la página completa.
 3. **Audio de Fondo y Radio Web con Event Queue de Hardware:**  
@@ -196,7 +196,8 @@ La arquitectura de hardware de la PS3 cuenta con dos bloques de 256 MB con carac
 1. **Afinidad PPU y Planificador:** Uso estricto de prioridades de hilo (0 a 3071) y control de prioridad de hardware por registro (`HMT_low`, `HMT_medium`) para balancear hilos lógicos PPU0 y PPU1.
 2. **SPU Local Store y Descompresión:** Compilación de zlib en los 256 KB de Local Store de una SPU para descompresión HTTP al vuelo con DMA doble búfer.
 3. **Aprovechamiento de 230 MB Libres de VRAM:** Asignación con `rsxMemalign(128, ...)` de un pool de snapshots de páginas con transferencias GPU-a-GPU vía `gcmSetTransferImage()`, permitiendo volver atrás en el historial de forma instantánea.
-4. **Vectorización AltiVec para Mezcla de Píxeles:** Uso de vectores `vec_perm` y `vec_lvsl` de 128 bits para operaciones de alpha blending en NetSurf a cuatro píxeles por ciclo de reloj.
+4. **Vectorización AltiVec para Rotación Big-Endian (Cero Colores Invertidos):**  
+   Uso de `vec_perm` con máscara vectorial `(vector unsigned char){ 3, 0, 1, 2, 7, 4, 5, 6, 11, 8, 9, 10, 15, 12, 13, 14 }` para transformar 4 píxeles por ciclo (16 bytes) del orden Little-Endian de NetSurf (`[R,G,B,A]`) al formato nativo Big-Endian de la PS3 (`[A,R,G,B]`), evitando pantallas azules o naranjas invertidas.
 5. **Memoria Temporal Dinámica:** Uso de contenedores `sysMemContainerCreate()` para aislar la memoria de pestañas pesadas sin riesgo de fragmentar el espacio del kernel.
 6. **Instrucciones de Precarga de Datos (`dcbt`):** Inyección de instrucciones `dcbt` (Data Cache Block Touch) con 2 nodos de anticipación al recorrer las listas enlazadas del árbol DOM.
 7. **Sincronización por Semáforos de Hardware RSX:** Triple Buffering gestionado con etiquetas de memoria de hardware (`gcmGetLabelAddress()`) para garantizar 60 FPS sin tearing ni esperas ociosas de PPU.
@@ -336,13 +337,15 @@ int eonsurf_resolve_direct_download(const char *html_body, char *out_url, size_t
 Para certificar cero fugas de memoria y estabilidad a 60 FPS continuos:
 
 ```c
-/* Arnés de pruebas de estrés con registro de tiempo Cell mftb */
+/* Arnés de pruebas de estrés universal para PowerPC64 (mfspr 268) */
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 static inline uint64_t get_timebase(void) {
     uint64_t tb;
-    __asm__ __volatile__ ("mftb %0" : "=r"(tb));
+    /* Mnemónico universal mfspr SPR 268 soportado en binutils 64-bit */
+    __asm__ __volatile__ ("mfspr %0, 268" : "=r"(tb));
     return tb;
 }
 
@@ -353,7 +356,9 @@ void eonsurf_run_stress_benchmark(void) {
         /* Apertura y cierre cíclico de pestañas con TLSF arena_destroy */
     }
     uint64_t end_tb = get_timebase();
-    printf("[STRESS] Test completado con éxito en %llu ciclos de reloj.\n", (end_tb - start_tb));
+    /* El Timebase de la PS3 corre a 79.8 MHz (1 tick = ~12.53 ns) */
+    printf("[STRESS] Completado en %" PRIu64 " ticks (%.2f ms).\n",
+           (end_tb - start_tb), (double)(end_tb - start_tb) / 79800.0);
 }
 ```
 
@@ -416,21 +421,29 @@ Los navegadores convencionales (Chromium/Firefox) son monstruos que consumen má
 El flujo de compilación oficial requiere el toolchain de PSL1GHT con `sprxlinker`:
 
 ```bash
-# 1. Compilación del código objeto de EonSurf
-powerpc64-ps3-elf-gcc -O2 -Wall -c src/main.c -o build/main.o
+# 1. Compilación con flags nativas del Cell B.E. y cabeceras PSL1GHT
+powerpc64-ps3-elf-gcc -O2 -mcpu=cell -maltivec -mabi=altivec -Wall \
+    -I$PSL1GHT/ppu/include -I$PS3DEV/portlibs/ppu/include \
+    -c src/main.c -o build/main.o
 
-# 2. Enlace final generando el ELF completo
-powerpc64-ps3-elf-gcc build/*.o -L$PS3DEV/portlibs/ppu/lib -lnet -lio -lrsx -lgcm_sys -lfont -lm -o build-eonsurf/EonSurf.elf
+# 2. Enlace respetando la jerarquía estricta de dependencias de Lv2
+powerpc64-ps3-elf-gcc build/*.o \
+    -L$PSL1GHT/ppu/lib -L$PS3DEV/portlibs/ppu/lib \
+    -lrsx -lgcm_sys -lnet -lio -lfont -lfs -laudio \
+    -lsysutil -lsysmodule -lm -lrt -llv2 \
+    -o build-eonsurf/EonSurf.elf
 
-# 3. Resolución obligatoria de stubs de librerías PRX del sistema
+# 3. Resolver stubs PRX contra la tabla OPD
 sprxlinker build-eonsurf/EonSurf.elf
 
-# 4. Creación y firmado del ejecutable de PlayStation 3 (EBOOT.BIN)
-make_fself build-eonsurf/EonSurf.elf dev_hdd0/game/EONS00001/USRDIR/EBOOT.BIN
+# 4. Para test rápido en RPCS3 (ejecutable suelto):
+make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
 
-# 5. Empaquetado oficial firmado para consolas físicas CEX/HEN
-make_self_npdrm build-eonsurf/EonSurf.elf dev_hdd0/game/EONS00001/USRDIR/EBOOT.BIN UP0001-EONS00001_00-0000000000000000
-pkg_builder -c eonsurf_pkg.conf dev_hdd0/game/EONS00001/ EonSurf-Navegador.pkg
+# 5. Para el paquete PKG final (CEX / HEN / CFW en /dev_hdd0/game/):
+make_self_npdrm build-eonsurf/EonSurf.elf \
+    dev_hdd0/game/EONS00001/USRDIR/EBOOT.BIN \
+    UP0001-EONS00001_00-0000000000000000
+pkg_builder -c eonsurf_pkg.conf dev_hdd0/game/EONS00001/ EonSurf-v0.3.1-alpha.pkg
 ```
 
 ---
