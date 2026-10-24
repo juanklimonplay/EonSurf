@@ -247,18 +247,8 @@ static inline void eonsurf_update_dynamic_infobox(const char *url, const char *r
 
 /* Dibuja las 5 filas dinámicas en la tarjeta blanca de la derecha con corte de seguridad */
 
-static inline void eonsurf_draw_dynamic_infobox_rows(int col_right_x, int table_start_y, int col_right_w, int canvas_y, int canvas_h) {
-    for (int r = 0; r < g_info_row_count; r++) {
-        int row_y = table_start_y + (r * 26);
-        if (row_y + 24 > canvas_y + canvas_h) break;
 
-        if (r % 2 == 1) {
-            rect(col_right_x + 14, row_y - 2, col_right_w - 28, 24, 0x00f8fafc);
-        }
-        text_hd(col_right_x + 18, row_y + 3, 1, g_info_rows[r].key, 0x000f172a);
-        draw_text_clipped(col_right_x + 115, row_y + 3, 1, g_info_rows[r].val, 0x002563eb, col_right_x + col_right_w - 16);
-    }
-}
+
 
 
 

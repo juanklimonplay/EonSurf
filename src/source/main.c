@@ -26,6 +26,7 @@
 #define STBI_ONLY_PNG
 #include "stb_image.h"
 #include "eonsurf_interactive_media.h"
+#include "eonsurf_dynamic_web.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -253,7 +254,21 @@ static void draw_text_clipped(int x, int y, int s, const char *text, u32 c, int 
     }
 }
 
-#include "eonsurf_dynamic_web.h"
+static inline void eonsurf_draw_dynamic_infobox_rows(int col_right_x, int table_start_y, int col_right_w, int canvas_y, int canvas_h);
+
+static inline void eonsurf_draw_dynamic_infobox_rows(int col_right_x, int table_start_y, int col_right_w, int canvas_y, int canvas_h) {
+    for (int r = 0; r < g_info_row_count; r++) {
+        int row_y = table_start_y + (r * 26);
+        if (row_y + 24 > canvas_y + canvas_h) break;
+
+        if (r % 2 == 1) {
+            rect(col_right_x + 14, row_y - 2, col_right_w - 28, 24, 0x00f8fafc);
+        }
+        text_hd(col_right_x + 18, row_y + 3, 1, g_info_rows[r].key, 0x000f172a);
+        draw_text_clipped(col_right_x + 115, row_y + 3, 1, g_info_rows[r].val, 0x002563eb, col_right_x + col_right_w - 16);
+    }
+}
+
 
 static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 default_color)
 {
