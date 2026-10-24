@@ -30,6 +30,7 @@
 #include "eonsurf_history.h"
 #include "eonsurf_downloader.h"
 #include "eonsurf_modern_ui.h"
+#include "eonsurf_mockup_engine.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -685,199 +686,20 @@ int main(void)
             }
         }
 
-        /* 1. Fondo degradado vertical Titanium (#0A121C -> #182634) */
-        eonsurf_draw_titanium_background(fb[cur], W);
+        /* ====================================================================
+         * MOTOR DE RENDERIZADO COMPLETO DEL MOCKUP V2 (60 FPS NATIVO)
+         * - Ondas de seda XMB + Spotlight radial plateado
+         * - Pestañas curvas estilo Chrome con glow cian y logo [W]
+         * - Barra URL con resplandor neón difuso y candado verde HTTPS
+         * - Título H1 a 34px y tipografía TrueType con contorno negro (stroke)
+         * - Infobox lateral con foto y telemetría dinámica
+         * - Dock inferior translúcido con los 5 controles DualShock 3
+         * - Cursor neón grande con glow turquesa
+         * ==================================================================== */
+        eonsurf_render_complete_mockup_frame(fb[cur], W, current_url, page_title, page_body,
+                                             px, py, scroll_y, &max_scroll_y);
 
-        /* 2. Barra de herramientas superior moderna Titanium Dark */
-        rect(0, 0, W, 58, 0x000b0f17);
-        rect(0, 58, W, 2, 0x000284c7);
-
-        /* Botones Atrás / Adelante con indicación visual activa/inactiva */
-        uint32_t back_border = eonsurf_can_go_back() ? 0x0000e5ff : 0x00334155;
-        uint32_t back_text   = eonsurf_can_go_back() ? 0x00ffffff : 0x0064748b;
-        draw_rounded_pill(fb[cur], W, BTN_BACK_X, BTN_BACK_Y - 2, BTN_BACK_W, BTN_BACK_H, 6, 0x001e293b, back_border);
-        text_hd(BTN_BACK_X + 10, BTN_BACK_Y + 7, 1, "<", back_text);
-
-        uint32_t fwd_border  = eonsurf_can_go_forward() ? 0x0000e5ff : 0x00334155;
-        uint32_t fwd_text    = eonsurf_can_go_forward() ? 0x00ffffff : 0x0064748b;
-        draw_rounded_pill(fb[cur], W, BTN_FWD_X, BTN_FWD_Y - 2, BTN_FWD_W, BTN_FWD_H, 6, 0x001e293b, fwd_border);
-        text_hd(BTN_FWD_X + 10, BTN_FWD_Y + 7, 1, ">", fwd_text);
-
-        /* Barra de Direcciones / Búsqueda con píldora y borde de brillo cian */
-        int url_bar_w = W - 440;
-        draw_rounded_pill(fb[cur], W, 112, 11, url_bar_w, 38, 8, 0x00030712, 0x000284c7);
-
-        snprintf(buf, sizeof(buf), "%s", current_url);
-        draw_text_clipped(126, 22, 1, buf, 0x0038bdf8, 112 + url_bar_w - 15);
-
-        /* Badge oficial Cell B.E. | 60 FPS (Desplazado a la izquierda sin solapamiento) */
-        draw_rounded_pill(fb[cur], W, W - 310, 13, 175, 34, 6, 0x000f172a, 0x0006b6d4);
-        text_hd(W - 298, 22, 1, "Cell B.E. | 60fps", 0x0038bdf8);
-
-        /* Indicador de red activa Online/Offline */
-        draw_rounded_pill(fb[cur], W, W - 120, 13, 98, 34, 6, net_initialized ? 0x00064e3b : 0x00450a0a, net_initialized ? 0x0010b981 : 0x00ef4444);
-        text_hd(W - 104, 22, 1, net_initialized ? "ONLINE" : "OFFLINE", 0x00ffffff);
-
-        /* 3. Marcadores Rapidos */
-        rect_rounded(60, 70, 270, 36, 5, 0x00242b38);
-        text_hd(75, 80, 1, "1. Wikipedia (PS3)", 0x00fbbf24);
-
-        rect_rounded(350, 70, 270, 36, 5, 0x00242b38);
-        text_hd(365, 80, 1, "2. Buscar: PS3 Scene", 0x0060a5fa);
-
-        rect_rounded(640, 70, 270, 36, 5, 0x00242b38);
-        text_hd(655, 80, 1, "3. webMAN-MOD Portal", 0x0034d399);
-
-        /* 4. MOTOR DE MAQUETACIÓN ESTRUCTURADA 70/30 (Estilo EonSurf UI Mockup) */
-        int canvas_x = 40;
-        int canvas_y = 120;
-        int canvas_w = W - 80;
-        int canvas_h = (page_links_count > 0) ? (H - 260) : (H - 175);
-
-        /* Columna Izquierda: 68% del ancho para el Artículo y Texto */
-        int col_left_w = (canvas_w * 68) / 100;
-        /* Columna Derecha: 30% del ancho para la Tarjeta Infobox */
-        int col_right_x = canvas_x + col_left_w + 20;
-        int col_right_w = canvas_w - col_left_w - 20;
-
-        /* Panel Izquierdo (70%): Dark Glass Titanium con borde suavizado y degradado */
-        eonsurf_draw_glass_panel(fb[cur], W, canvas_x, canvas_y, col_left_w, canvas_h, 10,
-                                 0xFF233040, 0xFF141D28, 0xFF3A526B, 240);
-
-        /* Cabecera translúcida del artículo */
-        rect_rounded(canvas_x + 2, canvas_y + 2, col_left_w - 4, 38, 8, 0x0018222d);
-        text_hd(canvas_x + 20, canvas_y + 12, 1, page_title, 0x00ffffff);
-
-        /* Contenido del artículo con tipografía legible en blanco perla (#E8F0F8) */
-        int content_height = text_wrapped_hd(canvas_x + 24, canvas_y + 55, 1, col_left_w - 48, 22,
-                                             canvas_y + 45, canvas_y + canvas_h - 15, scroll_y, page_body, 0x00e8f0f8);
-        max_scroll_y = (content_height > canvas_h - 60) ? (content_height - (canvas_h - 60)) : 0;
-
-        /* Barra de scroll vertical de la columna izquierda */
-        if (max_scroll_y > 0) {
-            int scrollbar_track_h = canvas_h - 60;
-            int thumb_h = (scrollbar_track_h * (canvas_h - 60)) / content_height;
-            if (thumb_h < 25) thumb_h = 25;
-            int thumb_y = canvas_y + 50 + (scroll_y * (scrollbar_track_h - thumb_h)) / max_scroll_y;
-
-            rect(canvas_x + col_left_w - 10, canvas_y + 50, 6, scrollbar_track_h, 0x00e2e8f0);
-            rect_rounded(canvas_x + col_left_w - 10, thumb_y, 6, thumb_h, 3, 0x003b82f6);
-        }
-
-        /* --- COLUMNA DERECHA: TARJETA INFOBOX WIKIPEDIA DARK GLASS (30%) --- */
-        eonsurf_draw_glass_panel(fb[cur], W, col_right_x, canvas_y, col_right_w, canvas_h, 10,
-                                 0xFF1E2938, 0xFF111822, 0xFF0284C7, 240);
-
-        /* Cabecera cian brillante de la Infobox */
-        rect_rounded(col_right_x + 2, canvas_y + 2, col_right_w - 4, 38, 8, 0x000284c7);
-        text_hd(col_right_x + 16, canvas_y + 11, 1, g_layout.title, 0x00ffffff);
-
-        /* Área de imagen fotográfica de la Infobox con textura nativa */
-        int img_box_y = canvas_y + 48;
-        int img_box_h = 130;
-        rect_rounded(col_right_x + 14, img_box_y, col_right_w - 28, img_box_h, 6, 0x000b0f17);
-
-        /* Si tenemos textura en g_layout.infobox_rgba_tex, dibujarla escalada con el blitter de punto fijo */
-        if (g_layout.infobox_rgba_tex && g_layout.img_w > 0 && g_layout.img_h > 0) {
-            int box_x = col_right_x + 18;
-            int box_y = img_box_y + 4;
-            int box_w = col_right_w - 36;
-            int box_h = img_box_h - 8;
-            eonsurf_blit_infobox_image(fb[cur], W, g_layout.infobox_rgba_tex, g_layout.img_w, g_layout.img_h,
-                                       box_x, box_y, box_w, box_h);
-        } else {
-            rect(col_right_x + 20, img_box_y + 6, col_right_w - 40, img_box_h - 12, 0x001e293b);
-            text_hd(col_right_x + (col_right_w / 2) - 64, img_box_y + 48, 1, "[ FOTO CONSOLA ]", 0x0038bdf8);
-        }
-        char sub_buf[32];
-        strncpy(sub_buf, g_layout.subtitle, sizeof(sub_buf) - 1);
-        sub_buf[sizeof(sub_buf) - 1] = '\0';
-        text_hd(col_right_x + 20, img_box_y + img_box_h + 8, 1, sub_buf, 0x0064748b);
-
-        /* Tabla de especificaciones clave-valor */
-        int table_start_y = img_box_y + img_box_h + 32;
-        rect(col_right_x + 14, table_start_y - 4, col_right_w - 28, 1, 0x00cbd5e1);
-
-        /* Filas 100% dinamicas: Ficha Wikipedia o Telemetria HTTP Real */
-        eonsurf_draw_dynamic_infobox_rows(col_right_x, table_start_y, col_right_w, canvas_y, canvas_h);
-
-        /* 5. Panel de Enlaces Hipertextuales */
-        if (page_links_count > 0) {
-            rect_rounded(canvas_x, H - 130, canvas_w, 90, 6, 0x00151821);
-            text_hd(canvas_x + 15, H - 124, 1, "ENLACES DISPONIBLES EN LA PAGINA (Haz clic para navegar):", 0x00fbbf24);
-
-            for (size_t k = 0; k < page_links_count && k < 6; k++) {
-                int col = k % 3;
-                int row = k / 3;
-                int btn_x = canvas_x + 15 + col * ((canvas_w - 40) / 3);
-                int btn_y = (H - 102) + row * 32;
-                int btn_w = ((canvas_w - 40) / 3) - 10;
-
-                int hovered = (px >= btn_x && px <= btn_x + btn_w && py >= btn_y && py <= btn_y + 28);
-                rect_rounded(btn_x, btn_y, btn_w, 28, 4, hovered ? 0x003b82f6 : 0x00242b38);
-                text_hd(btn_x + 10, btn_y + 6, 1, page_links[k].text, hovered ? 0x00ffffff : 0x0093c5fd);
-            }
-        }
-
-                /* 6. Barra de estado inferior: Dock Dark Glass con iconos vectoriales DualShock 3 */
-        eonsurf_draw_glass_panel(fb[cur], W, 220, H - 42, 840, 36, 18, 0xFF1C2733, 0xFF101720, 0xFF34495E, 235);
-
-        eonsurf_draw_ps3_button_icon(fb[cur], W, 250, H - 24, 'T'); /* Triángulo Verde */
-        text_hd(268, H - 28, 1, "URL / Buscar", 0x00dce6f0);
-
-        eonsurf_draw_ps3_button_icon(fb[cur], W, 420, H - 24, 'X'); /* Cruz Azul */
-        text_hd(438, H - 28, 1, "Abrir Enlace", 0x00dce6f0);
-
-        eonsurf_draw_ps3_button_icon(fb[cur], W, 580, H - 24, 'O'); /* Círculo Rojo */
-        text_hd(598, H - 28, 1, "Volver", 0x00dce6f0);
-
-        eonsurf_draw_ps3_button_icon(fb[cur], W, 720, H - 24, 'S'); /* Cuadrado Rosa */
-        text_hd(738, H - 28, 1, "Descargas", 0x00dce6f0);
-
-        text_hd(870, H - 28, 1, "[R-Stick] Scroll", 0x0094a3b8);
-
-        /* Coordenadas en píldora compacta */
-        draw_rounded_pill(fb[cur], W, W - 180, H - 30, 160, 24, 4, 0x00030712, 0x001e293b);
-        snprintf(buf, sizeof(buf), "RSX: %d, %d", px, py);
-        text_hd(W - 165, H - 23, 1, buf, 0x0038bdf8);
-
-        /* 6.5. Barra flotante de descarga OSD (.PKG / .ZIP / .ISO) */
-        eonsurf_draw_download_osd(fb[cur], W);
-
-        /* 7. Puntero de alta visibilidad Titanio/Cian con borde de sombra negro */
-        /* Matriz de 16x16: 0=transparente, 1=borde negro exterior, 2=interior cian brillante, 3=nucleo blanco */
-        static const uint8_t cursor_map[16][16] = {
-            {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-            {1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-            {1,3,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
-            {1,3,3,1,0,0,0,0,0,0,0,0,0,0,0,0},
-            {1,3,3,2,1,0,0,0,0,0,0,0,0,0,0,0},
-            {1,3,3,2,2,1,0,0,0,0,0,0,0,0,0,0},
-            {1,3,2,2,2,2,1,0,0,0,0,0,0,0,0,0},
-            {1,3,2,2,2,2,2,1,0,0,0,0,0,0,0,0},
-            {1,3,2,2,2,2,2,2,1,0,0,0,0,0,0,0},
-            {1,3,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
-            {1,3,2,2,2,2,1,1,1,1,1,0,0,0,0,0},
-            {1,3,2,1,2,2,1,0,0,0,0,0,0,0,0,0},
-            {1,1,1,0,1,2,2,1,0,0,0,0,0,0,0,0},
-            {1,0,0,0,1,2,2,1,0,0,0,0,0,0,0,0},
-            {0,0,0,0,0,1,2,2,1,0,0,0,0,0,0,0},
-            {0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0}
-        };
-        for (int row = 0; row < 16; row++) {
-            for (int col = 0; col < 16; col++) {
-                uint8_t p = cursor_map[row][col];
-                if (p == 1) {
-                    rect(px + col, py + row, 1, 1, 0x0005080f);
-                } else if (p == 2) {
-                    rect(px + col, py + row, 1, 1, 0x0006b6d4);
-                } else if (p == 3) {
-                    rect(px + col, py + row, 1, 1, 0x00ffffff);
-                }
-            }
-        }
-
-        flip();
+                flip();
     }
 
     if (net_initialized) {
