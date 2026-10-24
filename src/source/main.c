@@ -1,5 +1,6 @@
-/* EonSurf - Navegador Web Nativo para PS3 (PSL1GHT: RSX + NetSurf libnsfb).
- * Dibuja la interfaz visual premium del navegador y gestiona la navegacion interactiva. */
+/* EonSurf - Navegador Web Nativo para PS3 (PSL1GHT: RSX + NetSurf Engine Graphics).
+ * Modern Reader Mode con tipografia HD 8x16 de NetSurf, lienzo web iluminado,
+ * scroll interactivo y navegacion por hipertexto real. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,11 +15,7 @@
 #include <net/net.h>
 #include <curl/curl.h>
 
-#include "libnsfb.h"
-#include "libnsfb_plot.h"
-#include "libnsfb_event.h"
-
-#include "font5x7.h"
+#include "font8x16.h"
 #include "osk_ps3.h"
 #include "eonsurf_fsm.h"
 
@@ -32,12 +29,15 @@ static u32 W, H, pitch;
 static u32 *fb[2];
 static u32 fb_off[2];
 static int cur, first = 1, running = 1;
-static nsfb_t *nsfb = NULL;
 
-static char current_url[512] = "https://eonsurf.ps3/inicio";
-static char page_title[256] = "EonSurf: Bienvenido a la Web de PS3";
-static char page_body[4096] = "Escribe cualquier termino o presiona los botones de marcadores superiores para navegar en vivo.";
+static char current_url[512] = "https://es.wikipedia.org/wiki/PlayStation_3";
+static char page_title[256] = "PlayStation 3 - Wikipedia, la enciclopedia libre";
+static char page_body[8192] = "Bienvenido a EonSurf para PlayStation 3.\nUsa los marcadores superiores para cargar páginas web completas en vivo.";
 static int net_initialized = 0;
+
+/* Desplazamiento y Scroll */
+static int scroll_y = 0;
+static int max_scroll_y = 0;
 
 /* Enlaces extraidos dinamicamente de la pagina actual */
 static eon_page_link_t page_links[EONSURF_MAX_LINKS];
@@ -86,7 +86,7 @@ static void flip(void)
     first = 0;
 }
 
-/* Primitivas de renderizado grafico de alta estetica */
+/* Primitivas de renderizado grafico de alta fidelidad */
 static void rect(int x, int y, int w, int h, u32 c)
 {
     if (x < 0) { w += x; x = 0; }
@@ -106,66 +106,94 @@ static void rect_rounded(int x, int y, int w, int h, int r, u32 c)
     rect(x + w - r, y + r, r, h - 2 * r, c);
 }
 
-static void text(int x, int y, int s, const char *t, u32 c)
+/* Renderizado con tipografia HD 8x16 de NetSurf con soporte mayúsculas y minúsculas reales */
+static void text_hd(int x, int y, int s, const char *t, u32 c)
 {
-    for (; *t; t++, x += 6 * s) {
-        int ch = *t; if (ch >= 'a' && ch <= 'z') ch -= 32;
-        if (ch < 32 || ch > 90) ch = 32;
-        for (int i = 0; i < 5; i++)
-            for (int j = 0; j < 7; j++)
-                if (F[ch - 32][i] & (1 << j)) rect(x + i * s, y + j * s, s, s, c);
-    }
-}
-
-/* Renderizado con ajuste de linea por palabras (Word-Wrap) */
-static void text_wrapped(int start_x, int start_y, int scale, int max_width, int line_spacing, int max_lines, const char *t, u32 c)
-{
-    int cur_x = start_x;
-    int cur_y = start_y;
-    int lines_drawn = 0;
-    int char_w = 6 * scale;
-    const char *p = t;
-
-    while (*p && lines_drawn < max_lines) {
-        /* Ignorar espacios iniciales de linea */
-        while (*p == ' ') p++;
-        if (!*p) break;
-
-        /* Buscar la siguiente palabra */
-        const char *w_start = p;
-        while (*p && *p != ' ') p++;
-        int w_len = p - w_start;
-        int w_pix = w_len * char_w;
-
-        /* Si la palabra no cabe en la linea actual, saltar a la siguiente linea */
-        if (cur_x + w_pix > start_x + max_width && cur_x > start_x) {
-            cur_x = start_x;
-            cur_y += line_spacing;
-            lines_drawn++;
-            if (lines_drawn >= max_lines) break;
-        }
-
-        /* Dibujar palabra caracter por caracter */
-        for (int i = 0; i < w_len; i++) {
-            int ch = w_start[i];
-            if (ch >= 'a' && ch <= 'z') ch -= 32;
-            if (ch < 32 || ch > 90) ch = 32;
-            for (int col = 0; col < 5; col++) {
-                for (int row = 0; row < 7; row++) {
-                    if (F[ch - 32][col] & (1 << row)) {
-                        rect(cur_x + col * scale, cur_y + row * scale, scale, scale, c);
+    for (; *t; t++, x += 9 * s) {
+        uint8_t ch = (uint8_t)*t;
+        if (ch > 127) ch = 32;
+        for (int row = 0; row < 16; row++) {
+            uint8_t row_bits = font8x16_data[ch][row];
+            if (row_bits == 0) continue;
+            for (int col = 0; col < 8; col++) {
+                if (row_bits & (1 << (7 - col))) {
+                    if (s == 1) {
+                        int px = x + col;
+                        int py = y + row;
+                        if (px >= 0 && px < (int)W && py >= 0 && py < (int)H) {
+                            fb[cur][py * W + px] = c;
+                        }
+                    } else {
+                        rect(x + col * s, y + row * s, s, s, c);
                     }
                 }
             }
-            cur_x += char_w;
         }
-
-        /* Espacio despues de la palabra */
-        cur_x += char_w;
     }
 }
 
-/* Estructura para capturar respuesta HTTP/HTTPS via libcurl */
+/* Renderizado de parrafos con ajuste de linea y soporte de scroll vertical */
+static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 c)
+{
+    int cur_x = start_x;
+    int cur_y = start_y - scroll_offset;
+    int char_w = 9 * scale;
+    int total_height = 0;
+    const char *p = t;
+
+    while (*p) {
+        while (*p == ' ' || *p == '\n') {
+            if (*p == '\n') {
+                cur_x = start_x;
+                cur_y += line_spacing;
+            }
+            p++;
+        }
+        if (!*p) break;
+
+        const char *w_start = p;
+        while (*p && *p != ' ' && *p != '\n') p++;
+        int w_len = p - w_start;
+        int w_pix = w_len * char_w;
+
+        if (cur_x + w_pix > start_x + max_width && cur_x > start_x) {
+            cur_x = start_x;
+            cur_y += line_spacing;
+        }
+
+        if (cur_y + 16 * scale >= clip_top && cur_y <= clip_bottom) {
+            for (int i = 0; i < w_len; i++) {
+                uint8_t ch = (uint8_t)w_start[i];
+                if (ch > 127) ch = 32;
+                for (int row = 0; row < 16; row++) {
+                    uint8_t row_bits = font8x16_data[ch][row];
+                    if (!row_bits) continue;
+                    for (int col = 0; col < 8; col++) {
+                        if (row_bits & (1 << (7 - col))) {
+                            int px = cur_x + col * scale;
+                            int py = cur_y + row * scale;
+                            if (px >= start_x && px < start_x + max_width && py >= clip_top && py <= clip_bottom) {
+                                fb[cur][py * W + px] = c;
+                            }
+                        }
+                    }
+                }
+                cur_x += char_w;
+            }
+        } else {
+            cur_x += w_len * char_w;
+        }
+
+        cur_x += char_w;
+        if (cur_y + line_spacing - (start_y - scroll_offset) > total_height) {
+            total_height = cur_y + line_spacing - (start_y - scroll_offset);
+        }
+    }
+
+    return total_height;
+}
+
+/* Captura de respuesta HTTP via libcurl */
 struct HttpMemoryBuffer {
     char *data;
     size_t size;
@@ -176,7 +204,6 @@ static size_t http_write_callback(void *contents, size_t size, size_t nmemb, voi
     size_t total = size * nmemb;
     struct HttpMemoryBuffer *mem = (struct HttpMemoryBuffer *)userp;
 
-    /* Aceptamos hasta 256 KB en memoria XDR para el cuerpo de la página */
     if (mem->size < 256 * 1024) {
         size_t to_copy = total;
         if (mem->size + to_copy > 256 * 1024) {
@@ -191,17 +218,13 @@ static size_t http_write_callback(void *contents, size_t size, size_t nmemb, voi
             mem->data[mem->size] = 0;
         }
     }
-
-    /* SIEMPRE devolver 'total' para que libcurl sepa que los bytes fueron procesados */
     return total;
 }
 
-/* Navegación y descarga web real por HTTPS */
 static void navigate_to(const char *input_url)
 {
     char target_url[512] = "";
 
-    /* Si el usuario ingresa una busqueda (ej: "juegos ps3"), redirigir a DuckDuckGo Lite */
     if (strncmp(input_url, "http://", 7) != 0 && strncmp(input_url, "https://", 8) != 0) {
         char query_escaped[384] = "";
         size_t qidx = 0;
@@ -219,13 +242,14 @@ static void navigate_to(const char *input_url)
     strncpy(current_url, target_url, sizeof(current_url) - 1);
     current_url[sizeof(current_url) - 1] = '\0';
 
-    snprintf(page_title, sizeof(page_title), "Conectando: %s", target_url);
-    snprintf(page_body, sizeof(page_body), "Descargando contenido web seguro mediante libcurl + mbedTLS...");
+    snprintf(page_title, sizeof(page_title), "Cargando: %s", target_url);
+    snprintf(page_body, sizeof(page_body), "Conectando al servidor web...");
     page_links_count = 0;
+    scroll_y = 0;
 
     if (!net_initialized) {
-        snprintf(page_title, sizeof(page_title), "Modo Sin Conexion: %s", target_url);
-        snprintf(page_body, sizeof(page_body), "La red de PS3 no esta inicializada. Conecta la consola a Internet.");
+        snprintf(page_title, sizeof(page_title), "Sin Conexion");
+        snprintf(page_body, sizeof(page_body), "La red de PS3 no esta inicializada.");
         return;
     }
 
@@ -250,14 +274,13 @@ static void navigate_to(const char *input_url)
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
             snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, target_url);
 
-            /* Filtrar con el automata FSM eliminando JS, estilos y extrayendo enlaces reales */
-            char clean_body[3800] = "";
+            char clean_body[7800] = "";
             eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, clean_body, sizeof(clean_body), page_links, &page_links_count);
 
             if (strlen(clean_body) > 0) {
                 snprintf(page_body, sizeof(page_body), "%s", clean_body);
             } else {
-                snprintf(page_body, sizeof(page_body), "Pagina recibida (Tamano: %u bytes). Contenido sin texto directo.", (unsigned int)chunk.size);
+                snprintf(page_body, sizeof(page_body), "Pagina recibida (Tamano: %u bytes).", (unsigned int)chunk.size);
             }
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
@@ -286,19 +309,29 @@ int main(void)
     }
 
     while (running) {
-        int ax = 128, ay = 128, have = 0;
+        int ax = 128, ay = 128;
         sysUtilCheckCallback();
         ioPadGetInfo(&pinfo);
         if (pinfo.status[0]) {
             ioPadGetData(0, &pdata);
-            have = 1; ax = pdata.ANA_L_H; ay = pdata.ANA_L_V;
+            ax = pdata.ANA_L_H; ay = pdata.ANA_L_V;
             px += (ax - 128) / 16; py += (ay - 128) / 16;
             if (px < 0) px = 0;
             if (px > (int)W - 16) px = W - 16;
             if (py < 0) py = 0;
             if (py > (int)H - 16) py = H - 16;
 
-            /* Abrir teclado Sony con Triangulo */
+            /* Scroll vertical con el Stick Derecho o Cruceta Arriba/Abajo */
+            int ry = pdata.ANA_R_V - 128;
+            if (abs(ry) > 16) {
+                scroll_y += ry / 6;
+            }
+            if (pdata.BTN_UP) scroll_y -= 8;
+            if (pdata.BTN_DOWN) scroll_y += 8;
+            if (scroll_y < 0) scroll_y = 0;
+            if (scroll_y > max_scroll_y) scroll_y = max_scroll_y;
+
+            /* Teclado Sony OSK con Triangulo */
             if (pdata.BTN_TRIANGLE && !prev_btn_triangle) {
                 char url_ingresada[512] = "";
                 if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
@@ -309,9 +342,9 @@ int main(void)
             }
             prev_btn_triangle = pdata.BTN_TRIANGLE;
 
-            /* Clic con Cruz (Enter/K) en la barra de URL, marcadores o links */
+            /* Clic con Cruz [X] */
             if (pdata.BTN_CROSS && !prev_btn_cross) {
-                /* Clic en Barra de URL / Busqueda */
+                /* Barra de URL superior */
                 if (py >= 10 && py <= 50) {
                     char url_ingresada[512] = "";
                     if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
@@ -320,8 +353,8 @@ int main(void)
                         }
                     }
                 }
-                /* Clic en Marcadores Superiores */
-                else if (py >= 65 && py <= 115) {
+                /* Marcadores Rapidos */
+                else if (py >= 65 && py <= 112) {
                     if (px >= 60 && px <= 330) {
                         navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
                     } else if (px >= 350 && px <= 620) {
@@ -330,14 +363,14 @@ int main(void)
                         navigate_to("https://raw.githubusercontent.com/aldostools/webMAN-MOD/master/README.md");
                     }
                 }
-                /* Clic en Enlaces dinamicos descubiertos en la pagina */
-                else if (py >= H - 130 && py <= H - 50 && page_links_count > 0) {
+                /* Enlaces dinamicos en el panel de navegacion */
+                else if (py >= H - 125 && py <= H - 45 && page_links_count > 0) {
                     for (size_t k = 0; k < page_links_count && k < 6; k++) {
                         int col = k % 3;
                         int row = k / 3;
                         int btn_x = 60 + col * 380;
-                        int btn_y = (H - 125) + row * 38;
-                        if (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 34) {
+                        int btn_y = (H - 120) + row * 34;
+                        if (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 30) {
                             navigate_to(page_links[k].url);
                             break;
                         }
@@ -346,82 +379,105 @@ int main(void)
             }
             prev_btn_cross = pdata.BTN_CROSS;
 
-            /* Solo salir si se pulsa SELECT + START simultaneamente */
             if (pdata.BTN_START && pdata.BTN_SELECT) {
                 running = 0;
             }
         }
 
-        /* 1. Fondo elegante oscuro */
-        rect(0, 0, W, H, 0x000b132b);
+        /* 1. Fondo elegante de escritorio (#1E222D) */
+        rect(0, 0, W, H, 0x001e222d);
 
         /* 2. Barra de herramientas superior moderna */
-        rect(0, 0, W, 58, 0x001c2541);
-        rect(0, 58, W, 2, 0x0048cae4);
+        rect(0, 0, W, 58, 0x00151821);
+        rect(0, 58, W, 2, 0x003b82f6);
 
-        rect_rounded(20, 14, 32, 32, 4, 0x003a506b);
-        text(30, 22, 2, "<", 0x00ffffff);
+        rect_rounded(20, 14, 32, 32, 4, 0x002d3748);
+        text_hd(28, 22, 1, "<", 0x00ffffff);
 
-        rect_rounded(60, 14, 32, 32, 4, 0x003a506b);
-        text(70, 22, 2, ">", 0x00ffffff);
+        rect_rounded(60, 14, 32, 32, 4, 0x002d3748);
+        text_hd(68, 22, 1, ">", 0x00ffffff);
 
-        /* 3. Barra de URL estilizada con bordes redondeados */
+        /* Barra de Direcciones / Busqueda */
         int url_bar_w = W - 260;
-        rect_rounded(105, 12, url_bar_w, 36, 6, 0x000b132b);
-        rect(105, 46, url_bar_w, 2, 0x0000b4d8);
+        rect_rounded(105, 12, url_bar_w, 36, 6, 0x000f131a);
+        rect(105, 46, url_bar_w, 2, 0x003b82f6);
 
         snprintf(buf, sizeof(buf), "%s", current_url);
-        text(120, 22, 2, buf, 0x00caf0f8);
+        text_hd(120, 22, 1, buf, 0x0093c5fd);
 
         /* Indicador de red activa */
-        rect_rounded(W - 140, 14, 120, 32, 4, net_initialized ? 0x00065f46 : 0x00475569);
-        text(W - 130, 22, 2, net_initialized ? "RED ONLINE" : "OFFLINE", 0x00ffffff);
+        rect_rounded(W - 140, 14, 120, 32, 4, net_initialized ? 0x00059669 : 0x004b5563);
+        text_hd(W - 128, 22, 1, net_initialized ? "ONLINE" : "OFFLINE", 0x00ffffff);
 
-        /* 4. Marcadores Rapidos */
-        rect_rounded(60, 72, 270, 38, 5, 0x001c2541);
-        text(75, 84, 2, "1. Wikipedia (PS3)", 0x00ffd166);
+        /* 3. Marcadores Rapidos */
+        rect_rounded(60, 70, 270, 36, 5, 0x00242b38);
+        text_hd(75, 80, 1, "1. Wikipedia (PS3)", 0x00fbbf24);
 
-        rect_rounded(350, 72, 270, 38, 5, 0x001c2541);
-        text(365, 84, 2, "2. Buscar: PS3 Scene", 0x0048cae4);
+        rect_rounded(350, 70, 270, 36, 5, 0x00242b38);
+        text_hd(365, 80, 1, "2. Buscar: PS3 Scene", 0x0060a5fa);
 
-        rect_rounded(640, 72, 270, 38, 5, 0x001c2541);
-        text(655, 84, 2, "3. webMAN-MOD Portal", 0x0006d6a0);
+        rect_rounded(640, 70, 270, 36, 5, 0x00242b38);
+        text_hd(655, 80, 1, "3. webMAN-MOD Portal", 0x0034d399);
 
-        /* 5. Area de contenido web (Tarjeta visual estilo navegador moderno) */
-        int content_h = (page_links_count > 0) ? (H - 265) : (H - 180);
-        rect_rounded(40, 125, W - 80, content_h, 8, 0x001c2541);
-        rect_rounded(40, 125, W - 80, 42, 8, 0x0024325a);
-        text(60, 137, 2, page_title, 0x00ffffff);
+        /* 4. LIENZO WEB MODERNO ("Reader Canvas" Blanco/Gris Editorial #FFFFFF) */
+        int canvas_x = 50;
+        int canvas_y = 120;
+        int canvas_w = W - 100;
+        int canvas_h = (page_links_count > 0) ? (H - 260) : (H - 175);
 
-        /* Cuerpo del contenido web renderizado con ajuste de linea multilineal */
-        text_wrapped(60, 180, 2, W - 120, 22, 11, page_body, 0x0090e0ef);
+        /* Sombra exterior y cuerpo de la pagina web */
+        rect_rounded(canvas_x - 3, canvas_y - 3, canvas_w + 6, canvas_h + 6, 8, 0x000f131a);
+        rect_rounded(canvas_x, canvas_y, canvas_w, canvas_h, 6, 0x00f8fafc);
 
-        /* 6. Panel de Navegacion por Enlaces Clicables de la Web */
+        /* Cabecera del articulo web */
+        rect(canvas_x, canvas_y, canvas_w, 42, 0x00f1f5f9);
+        rect(canvas_x, canvas_y + 42, canvas_w, 1, 0x00e2e8f0);
+        text_hd(canvas_x + 20, canvas_y + 13, 1, page_title, 0x000f172a);
+
+        /* Contenido web con tipografia HD 8x16 de NetSurf Zap (Color texto editorial: #1E293B) */
+        int content_height = text_wrapped_hd(canvas_x + 24, canvas_y + 55, 1, canvas_w - 50, 22,
+                                             canvas_y + 45, canvas_y + canvas_h - 15, scroll_y, page_body, 0x001e293b);
+        
+        /* Calcular limites de scroll */
+        max_scroll_y = (content_height > canvas_h - 60) ? (content_height - (canvas_h - 60)) : 0;
+
+        /* Barra de scroll vertical interactiva */
+        if (max_scroll_y > 0) {
+            int scrollbar_track_h = canvas_h - 60;
+            int thumb_h = (scrollbar_track_h * (canvas_h - 60)) / content_height;
+            if (thumb_h < 25) thumb_h = 25;
+            int thumb_y = canvas_y + 50 + (scroll_y * (scrollbar_track_h - thumb_h)) / max_scroll_y;
+
+            rect(canvas_x + canvas_w - 12, canvas_y + 50, 8, scrollbar_track_h, 0x00e2e8f0);
+            rect_rounded(canvas_x + canvas_w - 12, thumb_y, 8, thumb_h, 4, 0x003b82f6);
+        }
+
+        /* 5. Panel de Enlaces Hipertextuales */
         if (page_links_count > 0) {
-            rect_rounded(40, H - 135, W - 80, 95, 8, 0x00162032);
-            text(55, H - 130, 1, "ENLACES DISPONIBLES EN LA PAGINA (Haz clic con [X] para navegar):", 0x00ffd166);
+            rect_rounded(canvas_x, H - 130, canvas_w, 90, 6, 0x00151821);
+            text_hd(canvas_x + 15, H - 124, 1, "ENLACES DISPONIBLES EN LA PAGINA (Haz clic para navegar):", 0x00fbbf24);
 
             for (size_t k = 0; k < page_links_count && k < 6; k++) {
                 int col = k % 3;
                 int row = k / 3;
-                int btn_x = 60 + col * 380;
-                int btn_y = (H - 110) + row * 34;
+                int btn_x = canvas_x + 15 + col * ((canvas_w - 40) / 3);
+                int btn_y = (H - 102) + row * 32;
+                int btn_w = ((canvas_w - 40) / 3) - 10;
 
-                /* Resaltar botón si el cursor está encima */
-                int hovered = (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 30);
-                rect_rounded(btn_x, btn_y, 360, 30, 4, hovered ? 0x0000b4d8 : 0x0024325a);
-                text(btn_x + 10, btn_y + 8, 2, page_links[k].text, hovered ? 0x000b132b : 0x00caf0f8);
+                int hovered = (px >= btn_x && px <= btn_x + btn_w && py >= btn_y && py <= btn_y + 28);
+                rect_rounded(btn_x, btn_y, btn_w, 28, 4, hovered ? 0x003b82f6 : 0x00242b38);
+                text_hd(btn_x + 10, btn_y + 6, 1, page_links[k].text, hovered ? 0x00ffffff : 0x0093c5fd);
             }
         }
 
-        /* 7. Barra de estado inferior */
-        rect(0, H - 35, W, 35, 0x000f172a);
-        text(20, H - 24, 2, "[/_\\] Buscar / URL  |  [X] Clic en Enlace  |  [SELECT+START] Salir", 0x00cbd5e1);
+        /* 6. Barra de estado inferior */
+        rect(0, H - 32, W, 32, 0x000f131a);
+        text_hd(20, H - 22, 1, "[/_\\] Buscar / URL   |   [X] Clic   |   [R-Stick / D-Pad] Scroll   |   [SELECT+START] Salir", 0x0094a3b8);
 
         snprintf(buf, sizeof(buf), "Cursor: %d, %d", px, py);
-        text(W - 180, H - 24, 2, buf, 0x0038bdf8);
+        text_hd(W - 170, H - 22, 1, buf, 0x0060a5fa);
 
-        /* 8. Cursor en forma de flecha estilizada */
+        /* 7. Cursor en forma de flecha estilizada */
         static const uint16_t arrow_mask[16] = {
             0b1000000000000000,
             0b1100000000000000,
@@ -443,7 +499,7 @@ int main(void)
         for (int row = 0; row < 16; row++) {
             for (int col = 0; col < 16; col++) {
                 if (arrow_mask[row] & (1 << (15 - col))) {
-                    u32 color = (col == 0 || row == col || row == 0) ? 0x0000b4d8 : 0x00ffffff;
+                    u32 color = (col == 0 || row == col || row == 0) ? 0x002563eb : 0x00ffffff;
                     rect(px + col, py + row, 1, 1, color);
                 }
             }
@@ -452,9 +508,6 @@ int main(void)
         flip();
     }
 
-    if (nsfb != NULL) {
-        nsfb_free(nsfb);
-    }
     if (net_initialized) {
         netDeinitialize();
     }
