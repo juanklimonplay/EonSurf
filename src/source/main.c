@@ -172,31 +172,7 @@ static void flip(void)
     first = 0;
 }
 
-/* Dibuja texto con recorte estricto para evitar desbordes en tarjetas */
-static void draw_text_clipped(int x, int y, int s, const char *text, u32 c, int max_right_x) {
-    int cur_x = x;
-    int char_w = 9 * s;
-    const char *p = text;
 
-    while (*p) {
-        if (cur_x + (char_w * 3) >= max_right_x && *(p + 1) != '\0') {
-            text_hd(cur_x, y, s, "...", c);
-            break;
-        }
-        char single[8] = "";
-        const char *next_p = p;
-        uint32_t cp = utf8_next_codepoint(&next_p);
-        if (cp == 0) break;
-        size_t len = next_p - p;
-        if (len < sizeof(single)) {
-            memcpy(single, p, len);
-            single[len] = '\0';
-            text_hd(cur_x, y, s, single, c);
-        }
-        cur_x += char_w;
-        p = next_p;
-    }
-}
 
 /* Primitivas de renderizado grafico de alta fidelidad */
 static void rect(int x, int y, int w, int h, u32 c)
@@ -249,6 +225,32 @@ static void text_hd(int x, int y, int s, const char *t, u32 c)
 }
 
 /* Renderizado de párrafos UTF-8 con soporte de enlaces coloreados (\x01 / \x02) y scroll */
+/* Dibuja texto con recorte estricto para evitar desbordes en tarjetas */
+static void draw_text_clipped(int x, int y, int s, const char *text, u32 c, int max_right_x) {
+    int cur_x = x;
+    int char_w = 9 * s;
+    const char *p = text;
+
+    while (*p) {
+        if (cur_x + (char_w * 3) >= max_right_x && *(p + 1) != '\0') {
+            text_hd(cur_x, y, s, "...", c);
+            break;
+        }
+        char single[8] = "";
+        const char *next_p = p;
+        uint32_t cp = utf8_next_codepoint(&next_p);
+        if (cp == 0) break;
+        size_t len = next_p - p;
+        if (len < sizeof(single)) {
+            memcpy(single, p, len);
+            single[len] = '\0';
+            text_hd(cur_x, y, s, single, c);
+        }
+        cur_x += char_w;
+        p = next_p;
+    }
+}
+
 static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 default_color)
 {
     int cur_x = start_x;
@@ -273,7 +275,7 @@ static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, i
         if (!*p) break;
 
         /* Medir longitud de la palabra ignorando marcas de control */
-        const char *w_start = p;
+        /* const char *w_start = p; */
         int word_chars = 0;
         const char *temp_p = p;
         while (*temp_p && *temp_p != ' ' && *temp_p != '\n') {
