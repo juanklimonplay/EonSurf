@@ -6,51 +6,145 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - 'LICENSE'
+      - '.gitignore'
   pull_request:
     branches: [ "main" ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - 'LICENSE'
+      - '.gitignore'
   workflow_dispatch:
 
 jobs:
-  build-ps3-pkg:
-    name: Compilar EonSurf (EONS00001) & Generar PKG
+  eonsurf-pkg:
     runs-on: ubuntu-24.04
+    env:
+      TITLE_ID: "EONS00001"
+      APP_TITLE: "EonSurf Web Browser"
+      CONTENT_ID: "UP0001-EONS00001_00-0000000000000000"
+      PS3DEV: "/usr/local/ps3dev"
+      PSL1GHT: "/usr/local/ps3dev"
 
     steps:
-      - name: 1. Checkout del repositorio EonSurf
+      - name: 1. Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: 2. Dependencias del anfitrion
+      - name: 2. Dependencias del anfitrión
         run: |
           sudo apt-get update
           sudo apt-get install -y texinfo flex bison libgmp-dev libelf-dev libmpfr-dev libmpc-dev \
             zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl
 
-      - name: 3. Cache del kit (ps3toolchain + PSL1GHT + ps3libraries)
+      - name: 3. Preparar permisos para cache de ps3dev
+        run: |
+          sudo mkdir -p /usr/local/ps3dev
+          sudo chown -R $USER:$USER /usr/local/ps3dev
+
+      - name: 4. Cache del kit (ps3toolchain + PSL1GHT + ps3libraries)
         id: kit
         uses: actions/cache@v4
         with:
           path: /usr/local/ps3dev
           key: ps3dev-${{ hashFiles('docs/TOOLCHAIN.md', 'tools/build-kit.sh') }}
 
-      - name: 4. Compilar el kit
+      - name: 5. Compilar el kit si no está en caché
         if: steps.kit.outputs.cache-hit != 'true'
         run: sudo -E bash tools/build-kit.sh
 
-      - name: 5. Compilar EonSurf y empaquetar PKG
+      - name: 6. Configurar PATH del toolchain
         run: |
-          export PS3DEV=/usr/local/ps3dev PSL1GHT=/usr/local/ps3dev
-          export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin
-          bash port/ps3/build-ps3.sh
+          echo "${PS3DEV}/bin" >> $GITHUB_PATH
+          echo "${PS3DEV}/ppu/bin" >> $GITHUB_PATH
+          echo "${PS3DEV}/spu/bin" >> $GITHUB_PATH
 
-      - name: 6. Subir Artefactos (PKG Instalable + Binario RPCS3)
+      - name: 7. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
+        run: |
+          export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin:${PS3DEV}/spu/bin
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev
+
+          # Directorios de compilación y empaquetado
+          mkdir -p build-eonsurf
+          mkdir -p pkg_build/USRDIR
+
+          # Copiar recursos del paquete
+          if [ -d "startpage" ]; then cp -r startpage pkg_build/USRDIR/; fi
+          if [ -f "pkg/ICON0.PNG" ]; then
+            cp pkg/ICON0.PNG pkg_build/ICON0.PNG
+          elif [ -f "src/pkg/ICON0.PNG" ]; then
+            cp src/pkg/ICON0.PNG pkg_build/ICON0.PNG
+          fi
+          if [ -f "pkg/PIC1.PNG" ]; then cp pkg/PIC1.PNG pkg_build/PIC1.PNG; fi
+          if [ -f "pkg/eonsurf.cfg" ]; then cp pkg/eonsurf.cfg pkg_build/USRDIR/; fi
+
+          # Compilación de objetos PPU con optimizaciones del Cell y AltiVec
+          SRC_DIR="src/source"
+          [ ! -d "$SRC_DIR" ] && SRC_DIR="src"
+          for src_file in ${SRC_DIR}/*.c port/ps3/osk_ps3.c; do
+            if [ -f "$src_file" ]; then
+              obj_file="build-eonsurf/$(basename "${src_file%.c}.o")"
+              echo "[CC] Compilando ${src_file} -> ${obj_file}"
+              powerpc64-ps3-elf-gcc -O2 -mcpu=cell -maltivec -mabi=altivec -Wall \
+                -I"${PSL1GHT}/include" \
+                -I"${PSL1GHT}/ppu/include" \
+                -I"${PS3DEV}/portlibs/ppu/include" \
+                -I"${SRC_DIR}" \
+                -Iport/ps3 \
+                -c "${src_file}" -o "${obj_file}"
+            fi
+          done
+
+          # Enlazar ELF respetando la jerarquía Lv2
+          echo "[LD] Enlazando EonSurf.elf..."
+          powerpc64-ps3-elf-gcc build-eonsurf/*.o \
+            -L"${PSL1GHT}/lib" \
+            -L"${PSL1GHT}/ppu/lib" \
+            -L"${PS3DEV}/portlibs/ppu/lib" \
+            -lrsx -lgcm_sys -lnet -lio -lfont -lfs -laudio \
+            -lsysutil -lsysmodule -lm -lrt -llv2 \
+            -o build-eonsurf/EonSurf.elf
+
+          # Resolver stubs de la tabla OPD
+          if command -v sprxlinker >/dev/null 2>&1; then
+            echo "[OPD] Ejecutando sprxlinker..."
+            sprxlinker build-eonsurf/EonSurf.elf
+          fi
+
+          # Generar binarios EBOOT y firmar
+          if command -v make_fself >/dev/null 2>&1; then
+            make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+          fi
+
+          if command -v make_self_npdrm >/dev/null 2>&1 && make_self_npdrm build-eonsurf/EonSurf.elf pkg_build/USRDIR/EBOOT.BIN "${CONTENT_ID}"; then
+            echo "[OK] EBOOT.BIN firmado con make_self_npdrm"
+          elif command -v make_fself_npdrm >/dev/null 2>&1 && make_fself_npdrm build-eonsurf/EonSurf.elf pkg_build/USRDIR/EBOOT.BIN; then
+            echo "[OK] EBOOT.BIN firmado con make_fself_npdrm"
+          else
+            cp build-eonsurf/EBOOT.BIN pkg_build/USRDIR/EBOOT.BIN
+          fi
+
+          # Generar PARAM.SFO obligatorio para evitar error 80029564 en PS3
+          if command -v sfo.py >/dev/null 2>&1; then
+            sfo.py --title "${APP_TITLE}" --appid "${TITLE_ID}" -f src/pkg/sfo.xml pkg_build/PARAM.SFO || true
+          elif command -v sfo >/dev/null 2>&1; then
+            sfo --title "${APP_TITLE}" --appid "${TITLE_ID}" -f src/pkg/sfo.xml pkg_build/PARAM.SFO || true
+          fi
+
+          # Empaquetar el .pkg final
+          if command -v pkg.py >/dev/null 2>&1; then
+            pkg.py --contentid "${CONTENT_ID}" pkg_build/ EonSurf-v0.3.1-alpha.pkg
+          elif command -v pkg_builder >/dev/null 2>&1; then
+            pkg_builder -c pkg/eonsurf_pkg.conf pkg_build/ EonSurf-v0.3.1-alpha.pkg
+          elif command -v pkg >/dev/null 2>&1; then
+            pkg --contentid "${CONTENT_ID}" pkg_build/ EonSurf-v0.3.1-alpha.pkg
+          fi
+
+          ls -lh EonSurf-*.pkg build-eonsurf/EBOOT.BIN
+
+      - name: 8. Subir Artefactos al Build
         uses: actions/upload-artifact@v4
         with:
-          name: EonSurf-PS3-Build-${{ github.sha }}
+          name: EonSurf-Navegador-pkg
           path: |
             EonSurf-*.pkg
             build-eonsurf/EBOOT.BIN
