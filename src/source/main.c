@@ -20,12 +20,12 @@
 #include "eonsurf_fsm.h"
 #include "eonsurf_layout.h"
 #include "eonsurf_md_clean.h"
-#include "eonsurf_interactive_media.h"
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_SIMD
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
 #include "stb_image.h"
+#include "eonsurf_interactive_media.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -52,8 +52,7 @@ static int max_scroll_y = 0;
 
 /* Enlaces extraidos dinamicamente de la pagina actual */
 static eon_page_link_t page_links[EONSURF_MAX_LINKS];
-static EonCleanLink md_links[MAX_CLEAN_LINKS];
-static int md_links_count = 0;
+
 static size_t page_links_count = 0;
 
 /* Decodificación de imágenes vía stb_image para el RSX en Big-Endian */
