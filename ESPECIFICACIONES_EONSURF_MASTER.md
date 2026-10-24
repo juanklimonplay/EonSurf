@@ -452,3 +452,46 @@ et\, \io\). Al ejecutarse en RPCS3 o consola real, cualquier llamada provoca un 
 | **AdBlocker Nativo** | Tabla binaria ordenada de **120 KB** | Hash **FNV-1a (64-bit)** + \search()\ pre-DNS (\(\log N)\$) | Bloqueo instantáneo en caché L2 con 0% de impacto en CPU. |
 | **Ciclo de Vida XMB** | \SYSUTIL_EXIT_GAME\ + \USRDIR/certs/cacert.pem\ | Cierre ordenado de SPUs/descriptores + Certificados por FTP | Cero triple pitido al salir al XMB y soporte HTTPS a futuro. |
 | **Bus EIB y MFC (SPUs)** | \__attribute__((aligned(128)))\ | Cola circular FIFO + Hardware Mailboxes (\spu_readch\) | Transferencias DMA a velocidad de ráfaga sin bus errors. |
+
+---
+
+## 22. Resolución Definitiva de los 4 Dilemas de Arquitectura Legendaria
+
+Para blindar la estabilidad, el consumo de memoria y la fluidez gráfica a 60 FPS en situaciones extremas (imágenes gigantes, JavaScript, composición RSX y recuperación de fallos):
+
+### 1. Manejo de Imágenes Gigantes (4K / 8K): Módulos SPRX Nativos + IDCT Downsampling
+- **Módulos Oficiales en SPUs:** Uso de \SYSMODULE_JPGDEC\ y \SYSMODULE_PNGDEC\ (\libjpgdec\ y \libpngdec\) provistos por el firmware de la consola. Sony diseñó estos módulos para ejecutarse de forma transparente y acelerada dentro de las SPUs del Cell.
+- **IDCT Scaling al Vuelo (Cero Desperdicio de RAM):** 
+  - Al recibir las cabeceras HTTP de una imagen, se lee su resolución original con \jpgDecReadHeader()\.
+  - Si la imagen supera 1920x1080 (ej. una foto 4K de 3840x2160), se configura el decodificador (\jpgDecInParam\) con factor de escala \scale_factor\ a 1/2 o 1/4.
+  - La SPU descarta frecuencias altas matemáticamente en la Transformada de Coseno Discreta y vuelca a la RAM XDR directamente una textura de 960x540 o 1920x1080 (ocupando solo ~4 MB en formato RGB565 o ~8 MB en XRGB8888, en lugar de los 48 MB que exigiría descomprimir la imagen completa en crudo).
+
+### 2. Motor JavaScript: Duktape Contenido con Sandbox de Memoria y Tiempo
+- **Por qué Duktape supera a QuickJS en PS3:**
+  - **Soporte Nativo Big-Endian:** La PPU del Cell opera en arquitectura PowerPC Big-Endian. Duktape fue diseñado en ANSI C89 con control estricto de orden de bytes (\DUK_USE_BYTEORDER\), evitando los errores de empaquetado de punteros (*NaN-boxing*) que sufre QuickJS en arquitecturas no x86/ARM.
+  - **Bindings Nativos de NetSurf (\
+sgenbind\):** NetSurf ya integra la capa de bindings entre su árbol DOM (\libdom\) y Duktape, ahorrando la reescritura manual de miles de líneas de enlace C.
+- **Sandbox Estricto Anti-Cuelgues:**
+  - **Límite de Memoria (Pool TLSF de 8 MB):** Al crear el contexto con \duk_create_heap()\, se delega a un sub-pool TLSF de 8 MB. Si un script intenta crear arrays infinitos, recibe \NULL\ a los 8 MB y arroja \RangeError: out of memory\, sin comprometer el resto del navegador.
+  - **Watchdog de Tiempo (\DUK_USE_INTERRUPT_COUNTER\):** Compilado con contador de interrupciones que ejecuta un callback cada \\$ instrucciones. Compara el registro de tiempo por hardware (\mftb\ - *Move From Time Base*). Si un script corre por más de 250 milisegundos, el callback fuerza la cancelación del bucle infinito sin congelar cuadros de video.
+
+### 3. Pipeline Gráfico RSX: Enfoque Híbrido de 2 Capas
+- **Capa 0 (Documento Web en RAM XDR):** El motor NetSurf dibuja la página, fuentes y estilos en la superficie \NSFB_SURFACE_RAM\ en memoria XDR. Se transfiere a la VRAM como una única textura grande por DMA solo cuando la página cambia o se produce scroll.
+- **Capa 1 (UI, Cursor Magnético y Zoom por Hardware RSX):**
+  - **Movimiento de Cursor con Coste Cero de DMA:** Cuando el usuario mueve el cursor analógico sin hacer scroll, no se vuelcan 8.2 MB de frame por DMA. El RSX re-dibuja el quad de la página que ya reside en VRAM y superpone el sprite del cursor (con su halo neón) por hardware en menos de 0.1 ms.
+  - **Zoom Cinematográfico Gratuito:** Mantener presionado L2 y mover el stick derecho altera las coordenadas de textura (U/V) de los 4 vértices del quad en el RSX con filtrado bilineal (\GCM_TEXTURE_LINEAR\), logrando zoom a 60 FPS sin recalcular píxeles en la CPU.
+
+### 4. Escudo de Recuperación Anti-Crash en 3 Niveles (Cero "Triple Pitido")
+- **Nivel 1: Paracaídas de Memoria OOM con \setjmp\ / \longjmp\:**
+  - En el wrapper del asignador TLSF, si el pool de 64 MB alcanza el 95% de ocupación, se invoca \longjmp(oom_recovery_env, 1)\ saltando directamente al bucle principal de \main.c\.
+  - Se ejecuta \rena_destroy()\, liberando de golpe la pestaña colapsada y mostrando en pantalla: *"La página excedió el límite de memoria de PS3. Volviendo al inicio..."*.
+- **Nivel 2: Hilo Watchdog con Cancelación Limpia de Red:**
+  - Un hilo PPU de prioridad alta (\500\) monitorea un contador atómico de actividad (\heartbeat_counter\).
+  - Si una transferencia de red se bloquea por más de 8 segundos, el callback \CURLOPT_XFERINFOFUNCTION\ retorna error para que cURL cierre los sockets internamente sin dejar descriptores huérfanos en Lv2.
+- **Nivel 3: Auto-Reinicio en Caliente (\sysProcessExitSpawn2\):**
+  - Si el hilo principal permanece congelado por 10 segundos:
+    1. Activa la bandera global \g_emergency_shutdown = 1\.
+    2. Cierra ordenadamente cualquier descriptor de archivo abierto en disco (\sysFsClose(g_download_fd)\).
+    3. Crea el archivo de seguridad \/dev_hdd0/game/EONSURF01/USRDIR/safe_mode.flag\.
+    4. Invoca la llamada del kernel: \sysProcessExitSpawn2("/dev_hdd0/game/EONSURF01/USRDIR/EBOOT.BIN", NULL, NULL, NULL, 0, 1001, SYS_PROCESS_SPAWN_STACK_SIZE_1M)\.
+    5. El kernel Lv2 descarga el proceso de forma limpia y reinicia EonSurf instantáneamente sin salir al XMB y sin emitir pitidos de error. Al arrancar, \main.c\ detecta la bandera, la elimina y entra en Modo Seguro.
