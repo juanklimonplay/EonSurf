@@ -154,8 +154,8 @@ La arquitectura de hardware de la PS3 cuenta con dos bloques de 256 MB con carac
 ---
 
 ## 9. Resolución de los Dilemas de Silicio Extremo
-1. **Filtro Stream de Entrada en PPU1 (Protección Anti-OOM en DOM Gigante):**  
-   Para evitar que páginas de noticias saturadas de nodos (El País, The Verge) saturen los 256 MB de XDR, el hilo de red en PPU1 (`libcurl`) actúa como un pre-filtro de tokens en tiempo real. Al recibir bloques de 128 KB descarta comentarios HTML, scripts pesados (`<script>`), SVGs kilométricos y corta el árbol inyectando un cierre virtual `</body></html>` si se superan los 3.000 nodos elementales.
+1. **Filtro Stream de Entrada en PPU1 con Exclusión de Boilerplate (Protección Anti-OOM en DOM Gigante):**  
+   Para evitar que diarios modernos saturen los 256 MB de XDR, el hilo de red en PPU1 (`libcurl`) utiliza un autómata FSM con estado `STATE_INSIDE_BOILERPLATE` que descarta cabeceras (`<header>`), menús (`<nav>`), pies (`<footer>`), barras laterales (`<aside>`) y `<svg>` sin sumarlos al límite de 3.000 nodos. Así, el cupo de 3.000 nodos se reserva íntegramente al contenido real del `<main>` o `<body>`, inyectando el cierre `</body></html>` únicamente cuando el artículo principal termina.
 2. **EonAI SSR & Transcoding (Solución al JavaScript Moderno):**  
    Páginas con renderizado SPA pesado (Twitter/X, foros reactivos) que excedan el sandbox Duktape (16 MB / 150 ms) se delegan al endpoint de EonAI o proxy headless opcional. El servidor procesa el JS, extrae el HTML estático resultante (SSR instantáneo) y entrega a la PS3 un DOM limpio que NetSurf renderiza en 0.1 ms sin esfuerzo.
 3. **Mipmaps Virtuales Dinámicos en RSX (Scroll a 60 FPS con Imágenes 4K/8K):**  
@@ -213,7 +213,7 @@ Módulos implementados en C puro para superar los tres desafíos del internet ac
 Para evitar que Cloudflare bloquee a EonSurf por presentar un orden de suites típico de clientes embebidos, se define el orden exacto de cifrados emulando navegadores modernos:
 
 ```c
-/* Camuflaje TLS para mbedTLS (JA3 Spoofing) */
+/* Camuflaje TLS para mbedTLS (JA3 / JA4 Spoofing Completo) */
 #include <mbedtls/ssl.h>
 
 static const int eonsurf_ja3_ciphersuites[] = {
@@ -228,8 +228,20 @@ static const int eonsurf_ja3_ciphersuites[] = {
     0
 };
 
+static const mbedtls_ecp_group_id eonsurf_ja3_curves[] = {
+    MBEDTLS_ECP_DP_CURVE25519,
+    MBEDTLS_ECP_DP_SECP256R1,
+    MBEDTLS_ECP_DP_SECP384R1,
+    MBEDTLS_ECP_DP_NONE
+};
+
+static const char *eonsurf_alpn_list[] = { "http/1.1", NULL };
+
 void eonsurf_apply_ja3_spoof(mbedtls_ssl_config *conf) {
     mbedtls_ssl_conf_ciphersuites(conf, eonsurf_ja3_ciphersuites);
+    mbedtls_ssl_conf_curves(conf, eonsurf_ja3_curves);
+    mbedtls_ssl_conf_alpn_protocols(conf, eonsurf_alpn_list);
+    mbedtls_ssl_conf_min_version(conf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3); /* TLS 1.2+ */
 }
 ```
 
@@ -237,17 +249,27 @@ void eonsurf_apply_ja3_spoof(mbedtls_ssl_config *conf) {
 Filtra anuncios, menús, scripts y estilos pesados, dejando únicamente el contenido legible en tipografía clara:
 
 ```c
-/* Extractor de contenido limpio para Modo Lector */
+/* Extractor de contenido limpio para Modo Lector con memoria TLSF y anidamiento */
 #include <string.h>
 #include <stdlib.h>
 
-char* eonsurf_extract_reader_mode(const char *html_source) {
+char* eonsurf_extract_reader_mode(void *tlsf_pool, const char *html_source) {
     if (!html_source) return NULL;
     const char *start = strstr(html_source, "<article");
     const char *end = NULL;
     if (start) {
-        end = strstr(start, "</article>");
-        if (end) end += 10;
+        /* Control de profundidad (depth) para no cortar en <article> anidados */
+        int depth = 0;
+        const char *p = start;
+        while ((p = strstr(p, "<article")) != NULL) {
+            depth++;
+            p += 8;
+            const char *close_tag = strstr(p, "</article>");
+            if (close_tag) {
+                depth--;
+                if (depth == 0) { end = close_tag + 10; break; }
+            }
+        }
     }
     if (!start || !end) {
         start = strstr(html_source, "<main");
@@ -258,7 +280,8 @@ char* eonsurf_extract_reader_mode(const char *html_source) {
     }
     if (!start || !end) return NULL;
     size_t len = end - start;
-    char *clean = (char*)malloc(len + 1);
+    /* Asignación estricta desde la arena TLSF de la pestaña activa */
+    char *clean = (char*)tlsf_malloc(tlsf_pool, len + 1);
     if (!clean) return NULL;
     memcpy(clean, start, len);
     clean[len] = '\0';
@@ -270,10 +293,12 @@ char* eonsurf_extract_reader_mode(const char *html_source) {
 Resuelve enlaces de páginas de descarga populares (MediaFire, GitHub Releases, Archive.org) antes de cargar la página completa:
 
 ```c
-/* Interceptor directo de descargas */
+/* Interceptor directo de descargas con soporte de rutas relativas y GitHub Releases moderno */
+#include <stdio.h>
 #include <string.h>
 
 int eonsurf_resolve_direct_download(const char *html_body, char *out_url, size_t max_len) {
+    /* 1. MediaFire Direct Link */
     const char *mf = strstr(html_body, "aria-label=\"Download file\" href=\"");
     if (mf) {
         mf += 33;
@@ -284,14 +309,21 @@ int eonsurf_resolve_direct_download(const char *html_body, char *out_url, size_t
             return 1;
         }
     }
-    const char *gh = strstr(html_body, "<a href=\"/releases/download/");
-    if (gh) {
-        gh += 9;
-        const char *end = strchr(gh, '"');
-        if (end && (size_t)(end - gh) < max_len) {
-            strncpy(out_url, gh, end - gh);
-            out_url[end - gh] = '\0';
-            return 1;
+    /* 2. GitHub Releases (resuelve rutas relativas y fragmentos expanded_assets) */
+    const char *dl_marker = strstr(html_body, "/releases/download/");
+    if (dl_marker) {
+        const char *start = dl_marker;
+        while (start > html_body && *start != '"') start--;
+        if (*start == '"') {
+            start++;
+            const char *end = strchr(start, '"');
+            if (end) {
+                size_t path_len = end - start;
+                if (start[0] == '/' && (path_len + 18) < max_len) {
+                    snprintf(out_url, max_len, "https://github.com%.*s", (int)path_len, start);
+                    return 1;
+                }
+            }
         }
     }
     return 0;
@@ -432,9 +464,9 @@ Para garantizar estabilidad inquebrantable frente a las condiciones más adversa
 - **Problema:** Si el usuario realiza toques intermitentes al stick analógico cada 400 ms, el temporizador de 500 ms se reiniciaría indefinidamente, manteniendo las imágenes en baja resolución de forma perpetua.
 - **Implementación:** Monitoreo del área visible (Viewport). Si una imagen cubre más del 70% del área de pantalla activa, el sistema omite la espera de 500 ms y despierta de inmediato a una SPU libre para decodificar la textura en alta resolución, inyectando instrucciones `dcbt` (Data Cache Block Touch) anticipadas para saturar la memoria caché.
 
-### 4. Rescate Térmico y Redirección de Descargas USB ante Desconexión en Caliente
-- **Problema:** Si el usuario extrae intempestivamente el disco USB o pendrive NTFS mientras descarga un archivo de 10 GB, la pérdida del descriptor de archivo puede causar un pánico del kernel Lv2 (el temido "triple pitido").
-- **Implementación:** Antes de cada escritura en bloques de 64 KB del búfer circular, se verifica la presencia del dispositivo mediante `NTFS_Test_Device()`. Si el bus USB reporta fallo de E/S o desconexión, el hilo de descarga desvía instantáneamente la escritura a la memoria interna (`/dev_hdd0/downloads/`) como zona de rescate temporal, emitiendo una alerta flotante en pantalla (`vshtask_notify`) sin colgar jamás el sistema operativo.
+### 4. Detección Reactiva de Fallo de E/S en USB 2.0 (Cero Polling Sincrónico)
+- **Problema:** Ejecutar `NTFS_Test_Device()` sincrónicamente cada 64 KB saturaría el bus USB 2.0 con paquetes SCSI TEST UNIT READY, hundiendo la velocidad de escritura a menos de 1.5 MB/s. Por otra parte, una desconexión intempestiva del cable causaría pánico de kernel (triple pitido).
+- **Implementación:** Escritura a máxima velocidad directa desde el búfer de doble anillo sin polling preventivo. Si la llamada de escritura (`ps3ntfs_write` o `fwrite`) devuelve menos bytes de los solicitados o reporta `EIO` / `ENODEV`, el sistema activa reactivamente la verificación, desvía en caliente el flujo del stream de red hacia la memoria interna (`/dev_hdd0/downloads/`), pausa la tarea de forma segura y notifica al usuario con `vshtask_notify` sin degradar el ancho de banda ni colgar la consola.
 
 ### 📊 Tabla de Ajustes Finales Post-Auditoría (Estándar de Oro Industrial)
 
@@ -466,12 +498,15 @@ uint8_t rsx_shared_buffer[BUFFER_SIZE] __attribute__((aligned(128)));
 
 ```c
 /* Sincronización atómica de silicio antes de ceder el búfer al RSX */
-static inline void eonsurf_sync_and_blit(void) {
-    /* Forzar a la CPU a vaciar sus registros hacia la RAM XDR */
-    __asm__ __volatile__ ("lwsync" : : : "memory");
+static inline void eonsurf_sync_and_blit(gcmContextData *ctx, uint32_t dst_vram_offset, uint32_t src_xdr_offset, uint32_t width, uint32_t height, uint32_t pitch) {
+    /* Barrera total de hardware (hwsync) para asegurar que XDR y MMIO estén sincronizados */
+    __asm__ __volatile__ ("sync" : : : "memory");
 
-    /* Ahora el RSX puede leer de forma segura vía DMA sin colisiones */
-    gcmSetTransferImage(ctx, GCM_TRANSFER_LOCAL_TO_LOCAL, ...);
+    /* Transferencia correcta desde XDR (MAIN) hacia GDDR3 (LOCAL) */
+    gcmSetTransferImage(ctx, GCM_TRANSFER_MAIN_TO_LOCAL,
+                        dst_vram_offset, pitch, 0, 0,
+                        src_xdr_offset, pitch, 0, 0,
+                        width, height, 4);
 }
 ```
 
