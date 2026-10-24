@@ -20,6 +20,7 @@
 
 #include "font5x7.h"
 #include "osk_ps3.h"
+#include "eonsurf_fsm.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -35,7 +36,7 @@ static nsfb_t *nsfb = NULL;
 
 static char current_url[512] = "https://eonsurf.ps3/inicio";
 static char page_title[256] = "EonSurf: Bienvenido a la Web de PS3";
-static char page_body[1024] = "Presiona [/\\] o haz click en la barra superior para escribir una URL con el teclado Sony.";
+static char page_body[4096] = "Presiona [/_\\] o haz click en la barra superior para escribir una URL con el teclado Sony.";
 static int net_initialized = 0;
 
 static void on_sysutil(u64 status, u64 param, void *ud)
@@ -112,6 +113,54 @@ static void text(int x, int y, int s, const char *t, u32 c)
     }
 }
 
+/* Renderizado con ajuste de linea por palabras (Word-Wrap) */
+static void text_wrapped(int start_x, int start_y, int scale, int max_width, int line_spacing, int max_lines, const char *t, u32 c)
+{
+    int cur_x = start_x;
+    int cur_y = start_y;
+    int lines_drawn = 0;
+    int char_w = 6 * scale;
+    const char *p = t;
+
+    while (*p && lines_drawn < max_lines) {
+        /* Ignorar espacios iniciales de linea */
+        while (*p == ' ') p++;
+        if (!*p) break;
+
+        /* Buscar la siguiente palabra */
+        const char *w_start = p;
+        while (*p && *p != ' ') p++;
+        int w_len = p - w_start;
+        int w_pix = w_len * char_w;
+
+        /* Si la palabra no cabe en la linea actual, saltar a la siguiente linea */
+        if (cur_x + w_pix > start_x + max_width && cur_x > start_x) {
+            cur_x = start_x;
+            cur_y += line_spacing;
+            lines_drawn++;
+            if (lines_drawn >= max_lines) break;
+        }
+
+        /* Dibujar palabra caracter por caracter */
+        for (int i = 0; i < w_len; i++) {
+            int ch = w_start[i];
+            if (ch >= 'a' && ch <= 'z') ch -= 32;
+            if (ch < 32 || ch > 90) ch = 32;
+            for (int col = 0; col < 5; col++) {
+                for (int row = 0; row < 7; row++) {
+                    if (F[ch - 32][col] & (1 << row)) {
+                        rect(cur_x + col * scale, cur_y + row * scale, scale, scale, c);
+                    }
+                }
+            }
+            cur_x += char_w;
+        }
+
+        /* Espacio despues de la palabra */
+        cur_x += char_w;
+    }
+}
+
 /* Estructura para capturar respuesta HTTP/HTTPS via libcurl */
 struct HttpMemoryBuffer {
     char *data;
@@ -123,11 +172,11 @@ static size_t http_write_callback(void *contents, size_t size, size_t nmemb, voi
     size_t total = size * nmemb;
     struct HttpMemoryBuffer *mem = (struct HttpMemoryBuffer *)userp;
 
-    /* Aceptamos hasta 128 KB en memoria XDR para el cuerpo de la página */
-    if (mem->size < 128 * 1024) {
+    /* Aceptamos hasta 256 KB en memoria XDR para el cuerpo de la página */
+    if (mem->size < 256 * 1024) {
         size_t to_copy = total;
-        if (mem->size + to_copy > 128 * 1024) {
-            to_copy = (128 * 1024) - mem->size;
+        if (mem->size + to_copy > 256 * 1024) {
+            to_copy = (256 * 1024) - mem->size;
         }
 
         char *ptr = realloc(mem->data, mem->size + to_copy + 1);
@@ -141,32 +190,6 @@ static size_t http_write_callback(void *contents, size_t size, size_t nmemb, voi
 
     /* SIEMPRE devolver 'total' para que libcurl sepa que los bytes fueron procesados y no aborte con CURLE_WRITE_ERROR (23) */
     return total;
-}
-
-/* Extrae texto legible descartando tags <...> */
-static void extract_plain_text(const char *html, char *out_text, size_t max_len)
-{
-    size_t out_idx = 0;
-    int in_tag = 0;
-
-    for (size_t i = 0; html[i] != '\0' && out_idx < max_len - 1; i++) {
-        if (html[i] == '<') {
-            in_tag = 1;
-        } else if (html[i] == '>') {
-            in_tag = 0;
-            if (out_idx > 0 && out_text[out_idx - 1] != ' ') {
-                out_text[out_idx++] = ' ';
-            }
-        } else if (!in_tag) {
-            char c = html[i];
-            if (c == '\r' || c == '\n' || c == '\t') c = ' ';
-            if (c == ' ' && out_idx > 0 && out_text[out_idx - 1] == ' ') continue;
-            if (c >= 32 && c <= 126) {
-                out_text[out_idx++] = c;
-            }
-        }
-    }
-    out_text[out_idx] = '\0';
 }
 
 /* Navegación y descarga web real por HTTPS */
@@ -193,9 +216,9 @@ static void navigate_to(const char *url)
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, http_write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (PlayStation 3; EonSurf/0.3.1; CellOS)");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (PlayStation 3; EonSurf/0.3.2; CellOS)");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); /* Aceptar certificados modernos en PS3 */
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
@@ -205,12 +228,14 @@ static void navigate_to(const char *url)
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
             snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, url);
 
-            char clean_body[800] = "";
-            extract_plain_text(chunk.data, clean_body, sizeof(clean_body));
+            /* Filtrar con el automata FSM eliminando JS, estilos y etiquetas */
+            char clean_body[3800] = "";
+            eonsurf_fsm_extract_text(chunk.data, chunk.size, clean_body, sizeof(clean_body));
+
             if (strlen(clean_body) > 0) {
                 snprintf(page_body, sizeof(page_body), "%s", clean_body);
             } else {
-                snprintf(page_body, sizeof(page_body), "Pagina recibida (Tamano: %u bytes).", (unsigned int)chunk.size);
+                snprintf(page_body, sizeof(page_body), "Pagina recibida (Tamano: %u bytes). Contenido sin texto directo.", (unsigned int)chunk.size);
             }
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
@@ -272,7 +297,7 @@ int main(void)
                             navigate_to(url_ingresada);
                         }
                     }
-                } else if (py >= 270 && py <= 320) {
+                } else if (py >= 220 && py <= 270) {
                     if (px >= 60 && px <= 340) {
                         navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
                     } else if (px >= 360 && px <= 640) {
@@ -290,14 +315,14 @@ int main(void)
             }
         }
 
-        /* 1. Fondo elegante oscuro con degradado visual */
+        /* 1. Fondo elegante oscuro */
         rect(0, 0, W, H, 0x000b132b);
 
         /* 2. Barra de herramientas superior moderna */
         rect(0, 0, W, 58, 0x001c2541);
         rect(0, 58, W, 2, 0x0048cae4);
 
-        /* Botones de navegacion OSD (Atras, Adelante, Recargar) */
+        /* Botones de navegacion OSD (Atras, Adelante) */
         rect_rounded(20, 14, 32, 32, 4, 0x003a506b);
         text(30, 22, 2, "<", 0x00ffffff);
 
@@ -316,37 +341,32 @@ int main(void)
         rect_rounded(W - 140, 14, 120, 32, 4, net_initialized ? 0x00065f46 : 0x00475569);
         text(W - 130, 22, 2, net_initialized ? "RED ONLINE" : "OFFLINE", 0x00ffffff);
 
-        /* 4. Area de contenido web (Tarjeta visual estilo navegador moderno) */
-        rect_rounded(40, 80, W - 80, H - 140, 8, 0x001c2541);
-        rect_rounded(40, 80, W - 80, 48, 8, 0x0024325a);
-        text(60, 95, 3, page_title, 0x00ffffff);
+        /* 4. Panel de acceso rapido a marcadores (en la parte superior de la vista) */
+        rect_rounded(60, 72, 270, 38, 5, 0x001c2541);
+        text(75, 84, 2, "1. Wikipedia (PS3)", 0x00ffd166);
 
-        /* Cuerpo del contenido web renderizado */
-        text(60, 160, 2, page_body, 0x0090e0ef);
+        rect_rounded(350, 72, 270, 38, 5, 0x001c2541);
+        text(365, 84, 2, "2. Gemini 2.5 AI", 0x0048cae4);
 
-        /* Linea separadora elegante */
-        rect(60, 210, W - 120, 2, 0x003a506b);
+        rect_rounded(640, 72, 270, 38, 5, 0x001c2541);
+        text(655, 84, 2, "3. PSX-Place Scene", 0x0006d6a0);
 
-        /* Panel de acceso rapido a marcadores */
-        text(60, 230, 3, "Marcadores Rapidos (Presiona [X] para cargar):", 0x00ffd166);
+        /* 5. Area de contenido web (Tarjeta visual estilo navegador moderno expandida) */
+        rect_rounded(40, 125, W - 80, H - 175, 8, 0x001c2541);
+        rect_rounded(40, 125, W - 80, 42, 8, 0x0024325a);
+        text(60, 137, 2, page_title, 0x00ffffff);
 
-        rect_rounded(60, 270, 280, 50, 6, 0x000b132b);
-        text(80, 285, 2, "1. Wikipedia (Enciclopedia)", 0x00ffffff);
-
-        rect_rounded(360, 270, 280, 50, 6, 0x000b132b);
-        text(380, 285, 2, "2. Gemini 2.5 Flash (AI)", 0x00ffffff);
-
-        rect_rounded(660, 270, 280, 50, 6, 0x000b132b);
-        text(680, 285, 2, "3. PSX-Place (Scene)", 0x00ffffff);
+        /* Cuerpo del contenido web renderizado con ajuste de linea multilineal (Word Wrap) */
+        text_wrapped(60, 185, 2, W - 120, 24, 16, page_body, 0x0090e0ef);
 
         /* Barra de estado inferior */
         rect(0, H - 35, W, 35, 0x000f172a);
-        text(20, H - 24, 2, "[/_\\] Escribir URL  |  [X] Clic / Seleccionar  |  [SELECT+START] Salir", 0x00cbd5e1);
+        text(20, H - 24, 2, "[/_\\] Teclado Sony  |  [X] Clic / Cargar  |  [SELECT+START] Salir", 0x00cbd5e1);
 
         snprintf(buf, sizeof(buf), "Cursor: %d, %d", px, py);
         text(W - 180, H - 24, 2, buf, 0x0038bdf8);
 
-        /* 5. Cursor en forma de flecha estilizada */
+        /* 6. Cursor en forma de flecha estilizada */
         static const uint16_t arrow_mask[16] = {
             0b1000000000000000,
             0b1100000000000000,
@@ -368,7 +388,6 @@ int main(void)
         for (int row = 0; row < 16; row++) {
             for (int col = 0; col < 16; col++) {
                 if (arrow_mask[row] & (1 << (15 - col))) {
-                    /* Borde exterior cian y relleno blanco */
                     u32 color = (col == 0 || row == col || row == 0) ? 0x0000b4d8 : 0x00ffffff;
                     rect(px + col, py + row, 1, 1, color);
                 }
