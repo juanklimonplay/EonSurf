@@ -172,11 +172,20 @@ static bool ps3_surface_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
     return false;
 }
 
-const nsfb_surface_rt_t ps3_rt_surface = {
-    .type = NSFB_SURFACE_RAM,
+static nsfb_surface_rtns_t ps3_rt_surface = {
     .defaults = ps3_surface_defaults,
     .initialise = ps3_surface_initialise,
     .finalise = ps3_surface_finalise,
-    .update = ps3_surface_update,
+    .geometry = NULL,
+    .parameters = NULL,
     .input = ps3_surface_input,
+    .claim = NULL,
+    .update = ps3_surface_update,
+    .cursor = NULL,
 };
+
+#ifndef NSFB_SURFACE_PS3
+#define NSFB_SURFACE_PS3 NSFB_SURFACE_RAM
+#endif
+
+NSFB_SURFACE_DEF(ps3, NSFB_SURFACE_PS3, &ps3_rt_surface)

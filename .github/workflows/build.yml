@@ -12,7 +12,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y texinfo flex bison libgmp-dev libelf-dev libmpfr-dev libmpc-dev \
-            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev
+            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl
       - name: Cache del kit (ps3toolchain + PSL1GHT + ps3libraries)
         id: kit
         uses: actions/cache@v4
@@ -26,10 +26,10 @@ jobs:
         run: |
           export PS3DEV=/usr/local/ps3dev PSL1GHT=/usr/local/ps3dev
           export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin
-          make -C hola pkg
           bash port/ps3/build-ps3.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: EonSurf-PS3-pkg
+          name: EonSurf-Navegador-pkg
           path: |
-            hola/hola.pkg
+            EonSurf-Navegador.pkg
+            build-eonsurf/EBOOT.BIN
