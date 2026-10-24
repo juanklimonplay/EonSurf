@@ -18,6 +18,12 @@
 #include "font8x16.h"
 #include "osk_ps3.h"
 #include "eonsurf_fsm.h"
+#include "eonsurf_layout.h"
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_SIMD
+#define STBI_ONLY_JPEG
+#define STBI_ONLY_PNG
+#include "stb_image.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -32,8 +38,11 @@ static int cur, first = 1, running = 1;
 
 static char current_url[512] = "https://es.wikipedia.org/wiki/PlayStation_3";
 static char page_title[256] = "PlayStation 3 - Wikipedia, la enciclopedia libre";
-static char page_body[8192] = "Bienvenido a EonSurf para PlayStation 3.\nUsa los marcadores superiores para cargar páginas web completas en vivo.";
+static char page_body[8192] = "PlayStation 3 (oficialmente abreviada como PS3) es la tercera videoconsola del modelo PlayStation de Sony Computer Entertainment.\n\nForma parte de las videoconsolas de séptima generación y compitió contra la Xbox 360 de Microsoft y la Wii de Nintendo. Su procesador central es el Cell Broadband Engine diseñado conjuntamente por Sony, Toshiba e IBM.";
 static int net_initialized = 0;
+
+/* Motor de Maquetación Estructurada 70/30 (eonsurf_layout.h) */
+static EonPageLayout g_layout;
 
 /* Desplazamiento y Scroll */
 static int scroll_y = 0;
@@ -42,6 +51,53 @@ static int max_scroll_y = 0;
 /* Enlaces extraidos dinamicamente de la pagina actual */
 static eon_page_link_t page_links[EONSURF_MAX_LINKS];
 static size_t page_links_count = 0;
+
+/* Decodificación de imágenes vía stb_image para el RSX en Big-Endian */
+static uint32_t* eonsurf_decode_image_argb(const uint8_t *buffer, int len, int *out_w, int *out_h) {
+    int w, h, channels;
+    uint8_t *raw = stbi_load_from_memory(buffer, len, &w, &h, &channels, 4);
+    if (!raw) return NULL;
+
+    uint32_t *argb = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+    if (!argb) { stbi_image_free(raw); return NULL; }
+
+    /* Empaquetado directo a 0xAARRGGBB nativo del RSX en Big-Endian */
+    for (int i = 0; i < w * h; i++) {
+        uint8_t r = raw[i * 4 + 0];
+        uint8_t g = raw[i * 4 + 1];
+        uint8_t b = raw[i * 4 + 2];
+        uint8_t a = raw[i * 4 + 3];
+        argb[i] = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+    }
+
+    stbi_image_free(raw);
+    *out_w = w;
+    *out_h = h;
+    return argb;
+}
+
+/* Inicializa la infobox de prueba para Wikipedia PS3 */
+static void init_default_layout(void) {
+    memset(&g_layout, 0, sizeof(EonPageLayout));
+    strncpy(g_layout.title, "PlayStation 3", sizeof(g_layout.title) - 1);
+    strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
+    
+    g_layout.info_row_count = 5;
+    strncpy(g_layout.info_rows[0].key, "Fabricante", sizeof(g_layout.info_rows[0].key) - 1);
+    strncpy(g_layout.info_rows[0].value, "Sony Computer Ent.", sizeof(g_layout.info_rows[0].value) - 1);
+
+    strncpy(g_layout.info_rows[1].key, "Lanzamiento", sizeof(g_layout.info_rows[1].key) - 1);
+    strncpy(g_layout.info_rows[1].value, "11 de nov. de 2006", sizeof(g_layout.info_rows[1].value) - 1);
+
+    strncpy(g_layout.info_rows[2].key, "CPU", sizeof(g_layout.info_rows[2].key) - 1);
+    strncpy(g_layout.info_rows[2].value, "Cell Broadband Engine 3.2GHz", sizeof(g_layout.info_rows[2].value) - 1);
+
+    strncpy(g_layout.info_rows[3].key, "GPU", sizeof(g_layout.info_rows[3].key) - 1);
+    strncpy(g_layout.info_rows[3].value, "RSX 'Reality Synthesizer' 500MHz", sizeof(g_layout.info_rows[3].value) - 1);
+
+    strncpy(g_layout.info_rows[4].key, "Ventas", sizeof(g_layout.info_rows[4].key) - 1);
+    strncpy(g_layout.info_rows[4].value, "87.4 millones de unidades", sizeof(g_layout.info_rows[4].value) - 1);
+}
 
 static void on_sysutil(u64 status, u64 param, void *ud)
 {
@@ -302,6 +358,7 @@ int main(void)
 
     sysUtilRegisterCallback(SYSUTIL_EVENT_SLOT0, on_sysutil, NULL);
     init_screen();
+    init_default_layout();
     ioPadInit(7);
 
     if (netInitialize() == 0) {
@@ -419,37 +476,72 @@ int main(void)
         rect_rounded(640, 70, 270, 36, 5, 0x00242b38);
         text_hd(655, 80, 1, "3. webMAN-MOD Portal", 0x0034d399);
 
-        /* 4. LIENZO WEB MODERNO ("Reader Canvas" Blanco/Gris Editorial #FFFFFF) */
-        int canvas_x = 50;
+        /* 4. MOTOR DE MAQUETACIÓN ESTRUCTURADA 70/30 (Estilo EonSurf UI Mockup) */
+        int canvas_x = 40;
         int canvas_y = 120;
-        int canvas_w = W - 100;
+        int canvas_w = W - 80;
         int canvas_h = (page_links_count > 0) ? (H - 260) : (H - 175);
 
-        /* Sombra exterior y cuerpo de la pagina web */
-        rect_rounded(canvas_x - 3, canvas_y - 3, canvas_w + 6, canvas_h + 6, 8, 0x000f131a);
-        rect_rounded(canvas_x, canvas_y, canvas_w, canvas_h, 6, 0x00f8fafc);
+        /* Columna Izquierda: 68% del ancho para el Artículo y Texto */
+        int col_left_w = (canvas_w * 68) / 100;
+        /* Columna Derecha: 30% del ancho para la Tarjeta Infobox */
+        int col_right_x = canvas_x + col_left_w + 20;
+        int col_right_w = canvas_w - col_left_w - 20;
 
-        /* Cabecera del articulo web */
-        rect(canvas_x, canvas_y, canvas_w, 42, 0x00f1f5f9);
-        rect(canvas_x, canvas_y + 42, canvas_w, 1, 0x00e2e8f0);
+        /* Sombra y cuerpo del artículo izquierdo */
+        rect_rounded(canvas_x - 3, canvas_y - 3, col_left_w + 6, canvas_h + 6, 8, 0x000f131a);
+        rect_rounded(canvas_x, canvas_y, col_left_w, canvas_h, 6, 0x00f8fafc);
+
+        /* Cabecera del artículo web */
+        rect(canvas_x, canvas_y, col_left_w, 42, 0x00f1f5f9);
+        rect(canvas_x, canvas_y + 42, col_left_w, 1, 0x00e2e8f0);
         text_hd(canvas_x + 20, canvas_y + 13, 1, page_title, 0x000f172a);
 
-        /* Contenido web con tipografia HD 8x16 de NetSurf Zap (Color texto editorial: #1E293B) */
-        int content_height = text_wrapped_hd(canvas_x + 24, canvas_y + 55, 1, canvas_w - 50, 22,
+        /* Contenido del artículo con tipografía Zap 8x16 en la columna izquierda */
+        int content_height = text_wrapped_hd(canvas_x + 24, canvas_y + 55, 1, col_left_w - 48, 22,
                                              canvas_y + 45, canvas_y + canvas_h - 15, scroll_y, page_body, 0x001e293b);
-        
-        /* Calcular limites de scroll */
         max_scroll_y = (content_height > canvas_h - 60) ? (content_height - (canvas_h - 60)) : 0;
 
-        /* Barra de scroll vertical interactiva */
+        /* Barra de scroll vertical de la columna izquierda */
         if (max_scroll_y > 0) {
             int scrollbar_track_h = canvas_h - 60;
             int thumb_h = (scrollbar_track_h * (canvas_h - 60)) / content_height;
             if (thumb_h < 25) thumb_h = 25;
             int thumb_y = canvas_y + 50 + (scroll_y * (scrollbar_track_h - thumb_h)) / max_scroll_y;
 
-            rect(canvas_x + canvas_w - 12, canvas_y + 50, 8, scrollbar_track_h, 0x00e2e8f0);
-            rect_rounded(canvas_x + canvas_w - 12, thumb_y, 8, thumb_h, 4, 0x003b82f6);
+            rect(canvas_x + col_left_w - 10, canvas_y + 50, 6, scrollbar_track_h, 0x00e2e8f0);
+            rect_rounded(canvas_x + col_left_w - 10, thumb_y, 6, thumb_h, 3, 0x003b82f6);
+        }
+
+        /* --- COLUMNA DERECHA: TARJETA INFOBOX WIKIPEDIA (30%) --- */
+        rect_rounded(col_right_x - 3, canvas_y - 3, col_right_w + 6, canvas_h + 6, 8, 0x000f131a);
+        rect_rounded(col_right_x, canvas_y, col_right_w, canvas_h, 6, 0x00ffffff);
+
+        /* Cabecera de la Infobox */
+        rect(col_right_x, canvas_y, col_right_w, 38, 0x000ea5e9);
+        text_hd(col_right_x + 16, canvas_y + 11, 1, g_layout.title, 0x00ffffff);
+
+        /* Área de imagen / preview del artículo */
+        int img_box_y = canvas_y + 48;
+        int img_box_h = 130;
+        rect_rounded(col_right_x + 14, img_box_y, col_right_w - 28, img_box_h, 4, 0x000f172a);
+        rect(col_right_x + 20, img_box_y + 6, col_right_w - 40, img_box_h - 12, 0x001e293b);
+        text_hd(col_right_x + (col_right_w / 2) - 64, img_box_y + 48, 1, "[ FOTO CONSOLA ]", 0x0038bdf8);
+        text_hd(col_right_x + 22, img_box_y + img_box_h + 8, 1, g_layout.subtitle, 0x0064748b);
+
+        /* Tabla de especificaciones clave-valor */
+        int table_start_y = img_box_y + img_box_h + 32;
+        rect(col_right_x + 14, table_start_y - 4, col_right_w - 28, 1, 0x00cbd5e1);
+
+        for (uint32_t r = 0; r < g_layout.info_row_count; r++) {
+            int row_y = table_start_y + (r * 26);
+            if (row_y + 24 > canvas_y + canvas_h) break;
+
+            if (r % 2 == 1) {
+                rect(col_right_x + 14, row_y - 2, col_right_w - 28, 24, 0x00f8fafc);
+            }
+            text_hd(col_right_x + 18, row_y + 3, 1, g_layout.info_rows[r].key, 0x000f172a);
+            text_hd(col_right_x + 120, row_y + 3, 1, g_layout.info_rows[r].value, 0x002563eb);
         }
 
         /* 5. Panel de Enlaces Hipertextuales */
