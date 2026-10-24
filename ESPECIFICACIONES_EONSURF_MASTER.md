@@ -267,7 +267,7 @@ Resuelve enlaces de páginas de descarga populares (MediaFire, GitHub Releases, 
 int eonsurf_resolve_direct_download(const char *html_body, char *out_url, size_t max_len) {
     const char *mf = strstr(html_body, "aria-label=\"Download file\" href=\"");
     if (mf) {
-        mf += 32;
+        mf += 33;
         const char *end = strchr(mf, '"');
         if (end && (size_t)(end - mf) < max_len) {
             strncpy(out_url, mf, end - mf);
@@ -356,7 +356,7 @@ sprxlinker build-eonsurf/EonSurf.elf
 make_fself build-eonsurf/EonSurf.elf dev_hdd0/game/EONS00001/USRDIR/EBOOT.BIN
 
 # 5. Empaquetado oficial firmado para consolas físicas CEX/HEN
-make_self_npdrm build-eonsurf/EonSurf.elf dev_hdd0/game/EONS00001/USRDIR/EBOOT.BIN EONS00001
+make_self_npdrm build-eonsurf/EonSurf.elf dev_hdd0/game/EONS00001/USRDIR/EBOOT.BIN UP0001-EONS00001_00-0000000000000000
 pkg_builder -c eonsurf_pkg.conf dev_hdd0/game/EONS00001/ EonSurf-Navegador.pkg
 ```
 
