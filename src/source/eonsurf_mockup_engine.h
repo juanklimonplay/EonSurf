@@ -11,6 +11,7 @@
 #include "eonsurf_interactive_media.h"
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_modern_ui.h"
+#include "eonsurf_mockup_details.h"
 
 /* ============================================================================
  * 1. MEZCLADOR SUB-PÍXEL ARGB DE ALTA VELOCIDAD
@@ -386,8 +387,14 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
 
     /* Pestañas superiores estilo Chrome */
     eonsurf_draw_chrome_tab(fb, pitch, 48,  8, 240, 42, "EonSurf", 0, 0);
+    /* 1. Dibuja el globo 🌐 en la Pestaña 1 ("EonSurf") */
+    eonsurf_draw_globe_icon(fb, pitch, 72, 28);
+
     eonsurf_draw_chrome_tab(fb, pitch, 296, 8, 280, 42, "PlayStation 3 - Wikipedia", 1, 1);
     eonsurf_draw_mockup_text(fb, pitch, 588, 17, 22, "+", 0x90A4B8, 0, 620);
+
+    /* 2. Une la pestaña activa con la línea horizontal brillante de punta a punta */
+    eonsurf_draw_tab_baseline_glow(fb, pitch, 296, 280);
 
     /* Badge "Cell B.E. • 60 FPS" */
     eonsurf_draw_glowing_pill(fb, pitch, 1082, 11, 178, 34, 0x101C28, 0x00E5FF);
@@ -401,6 +408,9 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_glowing_pill(fb, pitch, 200, 58, 860, 42, 0x0E1824, 0x20D8FF);
     eonsurf_draw_https_padlock(fb, pitch, 218, 71);
     eonsurf_draw_mockup_text(fb, pitch, 242, 69, 18, current_url, 0xF0F6FC, 0, 1040);
+
+    /* 3. Dibuja el emblema azul estilo PlayStation a la derecha de la barra de URL */
+    eonsurf_draw_ps_emblem(fb, pitch, 1032, 79);
 
     /* Título H1 a 34px sobre el panel */
     eonsurf_draw_mockup_text(fb, pitch, 68, 126, 34, article_title, 0xFFFFFF, 1, 880);
@@ -424,7 +434,10 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     int table_start_y = img_box_y + img_box_h + 32;
     eonsurf_draw_dynamic_infobox_rows(908, table_start_y, 332, 120, 525);
 
-    /* Cuerpo del artículo con contorno negro (Stroke) */
+    /* 4. Dibuja la franja oscura de foco detrás del párrafo donde apunta el cursor */
+    eonsurf_draw_paragraph_focus_box(fb, pitch, cursor_y);
+
+    /* Cuerpo del artículo con contorno negro (Stroke) y citas superíndice [1], [2] */
     int cur_x = 72, cur_y = 205;
     uint32_t cur_col = 0xF4F8FC;
     const char *p = article_body;
@@ -448,7 +461,8 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
             cur_y += 24;
             if (cur_y >= 630) break;
         }
-        cur_x = eonsurf_draw_mockup_text(fb, pitch, cur_x, cur_y, 18, word, cur_col, 1, 880);
+        /* 5. Renderizador con soporte para citas elevadas [1] */
+        cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, 880);
     }
 
     /* Dock Inferior Translúcido con los 5 controles oficiales */
