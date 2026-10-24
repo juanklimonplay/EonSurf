@@ -515,7 +515,7 @@ int main(void)
 
         /* Badge oficial Cell B.E. • 60 FPS */
         draw_rounded_pill(fb[cur], W, W - 264, 13, 148, 34, 6, 0x000f172a, 0x0006b6d4);
-        text_hd(W - 252, 22, 1, "Cell B.E. • 60fps", 0x0038bdf8);
+        text_hd(W - 252, 22, 1, "Cell B.E. | 60fps", 0x0038bdf8);
 
         /* Indicador de red activa Online/Offline */
         draw_rounded_pill(fb[cur], W, W - 104, 13, 84, 34, 6, net_initialized ? 0x00064e3b : 0x00450a0a, net_initialized ? 0x0010b981 : 0x00ef4444);
@@ -603,7 +603,10 @@ int main(void)
             rect(col_right_x + 20, img_box_y + 6, col_right_w - 40, img_box_h - 12, 0x001e293b);
             text_hd(col_right_x + (col_right_w / 2) - 64, img_box_y + 48, 1, "[ FOTO CONSOLA ]", 0x0038bdf8);
         }
-        text_hd(col_right_x + 22, img_box_y + img_box_h + 8, 1, g_layout.subtitle, 0x0064748b);
+        char sub_buf[32];
+        strncpy(sub_buf, g_layout.subtitle, sizeof(sub_buf) - 1);
+        sub_buf[sizeof(sub_buf) - 1] = '\0';
+        text_hd(col_right_x + 20, img_box_y + img_box_h + 8, 1, sub_buf, 0x0064748b);
 
         /* Tabla de especificaciones clave-valor */
         int table_start_y = img_box_y + img_box_h + 32;
@@ -616,8 +619,11 @@ int main(void)
             if (r % 2 == 1) {
                 rect(col_right_x + 14, row_y - 2, col_right_w - 28, 24, 0x00f8fafc);
             }
+            char val_buf[26];
+            strncpy(val_buf, g_layout.info_rows[r].value, sizeof(val_buf) - 1);
+            val_buf[sizeof(val_buf) - 1] = '\0';
             text_hd(col_right_x + 18, row_y + 3, 1, g_layout.info_rows[r].key, 0x000f172a);
-            text_hd(col_right_x + 120, row_y + 3, 1, g_layout.info_rows[r].value, 0x002563eb);
+            text_hd(col_right_x + 115, row_y + 3, 1, val_buf, 0x002563eb);
         }
 
         /* 5. Panel de Enlaces Hipertextuales */
