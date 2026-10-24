@@ -194,7 +194,8 @@ int main(void)
             }
             prev_btn_cross = pdata.BTN_CROSS;
 
-            if (pdata.BTN_START) {
+            /* Solo salir si se pulsa SELECT + START simultaneamente */
+            if (pdata.BTN_START && pdata.BTN_SELECT) {
                 running = 0;
             }
         }
@@ -250,7 +251,7 @@ int main(void)
 
         /* Barra de estado inferior */
         rect(0, H - 35, W, 35, 0x000f172a);
-        text(20, H - 24, 2, "[/_\\] Escribir URL  |  [X] Clic / Seleccionar  |  [START] Salir al XMB", 0x00cbd5e1);
+        text(20, H - 24, 2, "[/_\\] Escribir URL  |  [X] Clic / Seleccionar  |  [SELECT+START] Salir", 0x00cbd5e1);
 
         snprintf(buf, sizeof(buf), "Cursor: %d, %d", px, py);
         text(W - 180, H - 24, 2, buf, 0x0038bdf8);
