@@ -38,5 +38,5 @@ jobs:
         with:
           name: EonSurf-Navegador-pkg
           path: |
-            EonSurf-Navegador.pkg
+            EonSurf-*.pkg
             build-eonsurf/EBOOT.BIN

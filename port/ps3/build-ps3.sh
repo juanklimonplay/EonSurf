@@ -54,7 +54,7 @@ if command -v sprxlinker >/dev/null 2>&1; then
     sprxlinker build-eonsurf/EonSurf.elf
 fi
 
-echo "==> 5. Firmando ejecutable y generando EonSurf-Navegador.pkg..."
+echo "==> 5. Firmando ejecutable y generando EonSurf-v0.3.1-alpha.pkg..."
 # Usar make_fself directo para compatibilidad universal (RPCS3 + HEN/CFW sin bloqueo de clave DRM)
 if command -v make_fself >/dev/null 2>&1; then
     make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
@@ -79,12 +79,12 @@ cp repo/pkg/lang_*.json build-eonsurf/pkg_dir/USRDIR/ 2>/dev/null || true
 cp repo/startpage/index.html build-eonsurf/pkg_dir/USRDIR/startpage/ 2>/dev/null || true
 
 if command -v pkg >/dev/null 2>&1; then
-    pkg --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg
+    pkg --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-v0.3.1-alpha.pkg
     if command -v package_finalize >/dev/null 2>&1; then
-        package_finalize EonSurf-Navegador.pkg || true
+        package_finalize EonSurf-v0.3.1-alpha.pkg || true
     fi
 elif command -v pkg.py >/dev/null 2>&1; then
-    pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg
+    pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-v0.3.1-alpha.pkg
 else
     echo "Aviso: herramienta pkg no disponible"
 fi
