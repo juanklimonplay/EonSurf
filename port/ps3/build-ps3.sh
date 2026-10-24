@@ -19,7 +19,8 @@ cp port/ps3/osk_ps3.c "$WORK_DIR/netsurf-all-3.11/netsurf/frontends/framebuffer/
 
 echo "==> 3. Generando binario EonSurf para PS3..."
 mkdir -p build-eonsurf/pkg
-cp hola/pkg/ICON0.PNG build-eonsurf/pkg/
+cp repo/pkg/ICON0.PNG build-eonsurf/pkg/ 2>/dev/null || cp hola/pkg/ICON0.PNG build-eonsurf/pkg/
+cp repo/pkg/PIC1.PNG build-eonsurf/pkg/ 2>/dev/null || cp hola/pkg/PIC1.PNG build-eonsurf/pkg/ || true
 cp hola/pkg/sfo.xml build-eonsurf/pkg/
 
 INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/src -I$WORK_DIR/netsurf-all-3.11/libnsfb/src/plot"
@@ -57,6 +58,7 @@ mkdir -p build-eonsurf/pkg_dir/USRDIR
 cp build-eonsurf/EBOOT.BIN build-eonsurf/pkg_dir/USRDIR/
 cp build-eonsurf/PARAM.SFO build-eonsurf/pkg_dir/
 cp build-eonsurf/pkg/ICON0.PNG build-eonsurf/pkg_dir/
+cp build-eonsurf/pkg/PIC1.PNG build-eonsurf/pkg_dir/ 2>/dev/null || true
 
 pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || \
 package_finalize build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || true
