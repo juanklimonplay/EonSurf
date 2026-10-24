@@ -49,7 +49,12 @@ powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
     -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lrt -llv2 -lm \
     -o build-eonsurf/EonSurf.elf
 
-echo "==> 4. Firmando ejecutable y generando EonSurf-Navegador.pkg..."
+echo "==> 4. Enlazando stubs de librerias con sprxlinker..."
+if command -v sprxlinker >/dev/null 2>&1; then
+    sprxlinker build-eonsurf/EonSurf.elf
+fi
+
+echo "==> 5. Firmando ejecutable y generando EonSurf-Navegador.pkg..."
 # Usar make_fself directo para compatibilidad universal (RPCS3 + HEN/CFW sin bloqueo de clave DRM)
 if command -v make_fself >/dev/null 2>&1; then
     make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
