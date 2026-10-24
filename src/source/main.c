@@ -348,7 +348,19 @@ static void navigate_to(const char *input_url)
             if (strlen(clean_body) > 0) {
                 snprintf(page_body, sizeof(page_body), "%s", clean_body);
             } else {
-                snprintf(page_body, sizeof(page_body), "Pagina recibida (Tamano: %u bytes).", (unsigned int)chunk.size);
+                snprintf(page_body, sizeof(page_body), "Página recibida (Tamaño: %u bytes).", (unsigned int)chunk.size);
+            }
+
+            /* Actualizar título del documento en la Infobox 70/30 */
+            if (strstr(target_url, "PlayStation_3") || strstr(target_url, "playstation")) {
+                strncpy(g_layout.title, "PlayStation 3", sizeof(g_layout.title) - 1);
+                strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
+            } else if (strstr(target_url, "duckduckgo")) {
+                strncpy(g_layout.title, "DuckDuckGo Search", sizeof(g_layout.title) - 1);
+                strncpy(g_layout.subtitle, "Resultados web en vivo", sizeof(g_layout.subtitle) - 1);
+            } else {
+                strncpy(g_layout.title, "Web Document", sizeof(g_layout.title) - 1);
+                strncpy(g_layout.subtitle, target_url, sizeof(g_layout.subtitle) - 1);
             }
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
