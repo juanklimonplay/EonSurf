@@ -111,11 +111,12 @@ jobs:
               ${INC_FLAGS} -c "${src_file}" -o "${obj_file}"
           done
 
-          # Enlazar ELF respetando la jerarquía Lv2
+          # Enlazar ELF con jerarquía Lv2 estricta y resolver dependencias circulares
           echo "[LD] Enlazando EonSurf.elf..."
           powerpc64-ps3-elf-gcc build-eonsurf/*.o \
             ${LIB_FLAGS} \
-            -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lfont -laudio -lm -lrt -llv2 \
+            -lrsx -lgcm_sys -lio -lfont -laudio -lmbedtls -lcurl \
+            -Wl,--start-group -lnet -lsysutil -lsysmodule -lm -lrt -llv2 -Wl,--end-group \
             -o build-eonsurf/EonSurf.elf
 
           # Resolver stubs de la tabla OPD
