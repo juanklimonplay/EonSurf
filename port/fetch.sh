@@ -12,7 +12,13 @@ if [ ! -d netsurf-all-$VER ]; then
   for p in "$SCRIPT_DIR"/patches/*.patch; do
     if [ -f "$p" ]; then
       echo "Aplicando parche: $p"
-      patch -p1 -d netsurf-all-$VER -N < "$p" || patch -p1 -d netsurf-all-$VER/netsurf -N < "$p" || true
+      if patch -p1 -d netsurf-all-$VER --dry-run < "$p" > /dev/null 2>&1; then
+        patch -p1 -d netsurf-all-$VER -N < "$p"
+      elif patch -p1 -d netsurf-all-$VER/netsurf --dry-run < "$p" > /dev/null 2>&1; then
+        patch -p1 -d netsurf-all-$VER/netsurf -N < "$p"
+      else
+        echo "Aviso: no se pudo aplicar parche $p limpiamente"
+      fi
     fi
   done
 fi

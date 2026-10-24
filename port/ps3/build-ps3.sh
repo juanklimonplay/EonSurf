@@ -22,12 +22,28 @@ mkdir -p build-eonsurf/pkg
 cp hola/pkg/ICON0.PNG build-eonsurf/pkg/
 cp hola/pkg/sfo.xml build-eonsurf/pkg/
 
-INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/src"
+INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/src -I$WORK_DIR/netsurf-all-3.11/libnsfb/src/plot"
 LIB_FLAGS="-L$PSL1GHT/lib -L$PSL1GHT/ppu/lib -L$PREFIX/lib"
 
-echo "Enlazando EonSurf con driver RSX nativo y módulos..."
+NSFB_DIR="$WORK_DIR/netsurf-all-3.11/libnsfb"
+NSFB_SOURCES="
+    $NSFB_DIR/src/libnsfb.c
+    $NSFB_DIR/src/cursor.c
+    $NSFB_DIR/src/palette.c
+    $NSFB_DIR/src/surface/surface.c
+    $NSFB_DIR/src/surface/ram.c
+    $NSFB_DIR/src/plot/api.c
+    $NSFB_DIR/src/plot/util.c
+    $NSFB_DIR/src/plot/generic.c
+    $NSFB_DIR/src/plot/32bpp-xrgb8888.c
+    $NSFB_DIR/src/plot/32bpp-xbgr8888.c
+    $NSFB_DIR/src/plot/16bpp.c
+    $NSFB_DIR/src/plot/8bpp.c
+"
+
+echo "Enlazando EonSurf con libnsfb y driver RSX nativo..."
 powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
-    port/ps3/surface_ps3.c port/ps3/osk_ps3.c hola/source/main.c \
+    port/ps3/surface_ps3.c port/ps3/osk_ps3.c hola/source/main.c $NSFB_SOURCES \
     $INC_FLAGS $LIB_FLAGS \
     -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lrt -llv2 -lm \
     -o build-eonsurf/EonSurf.elf

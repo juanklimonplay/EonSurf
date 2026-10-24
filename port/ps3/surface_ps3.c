@@ -184,4 +184,8 @@ static nsfb_surface_rtns_t ps3_rt_surface = {
     .cursor = NULL,
 };
 
-NSFB_SURFACE_DEF(ps3, NSFB_SURFACE_RAM, &ps3_rt_surface)
+#ifndef NSFB_SURFACE_PS3
+#define NSFB_SURFACE_PS3 NSFB_SURFACE_RAM
+#endif
+
+NSFB_SURFACE_DEF(ps3, NSFB_SURFACE_PS3, &ps3_rt_surface)
