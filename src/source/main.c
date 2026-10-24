@@ -19,6 +19,7 @@
 #include "osk_ps3.h"
 #include "eonsurf_fsm.h"
 #include "eonsurf_layout.h"
+#include "eonsurf_md_clean.h"
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_SIMD
 #define STBI_ONLY_JPEG
@@ -50,6 +51,8 @@ static int max_scroll_y = 0;
 
 /* Enlaces extraidos dinamicamente de la pagina actual */
 static eon_page_link_t page_links[EONSURF_MAX_LINKS];
+static EonCleanLink md_links[MAX_CLEAN_LINKS];
+static int md_links_count = 0;
 static size_t page_links_count = 0;
 
 /* Decodificación de imágenes vía stb_image para el RSX en Big-Endian */
@@ -169,6 +172,32 @@ static void flip(void)
     first = 0;
 }
 
+/* Dibuja texto con recorte estricto para evitar desbordes en tarjetas */
+static void draw_text_clipped(int x, int y, int s, const char *text, u32 c, int max_right_x) {
+    int cur_x = x;
+    int char_w = 9 * s;
+    const char *p = text;
+
+    while (*p) {
+        if (cur_x + (char_w * 3) >= max_right_x && *(p + 1) != '\0') {
+            text_hd(cur_x, y, s, "...", c);
+            break;
+        }
+        char single[8] = "";
+        const char *next_p = p;
+        uint32_t cp = utf8_next_codepoint(&next_p);
+        if (cp == 0) break;
+        size_t len = next_p - p;
+        if (len < sizeof(single)) {
+            memcpy(single, p, len);
+            single[len] = '\0';
+            text_hd(cur_x, y, s, single, c);
+        }
+        cur_x += char_w;
+        p = next_p;
+    }
+}
+
 /* Primitivas de renderizado grafico de alta fidelidad */
 static void rect(int x, int y, int w, int h, u32 c)
 {
@@ -219,30 +248,39 @@ static void text_hd(int x, int y, int s, const char *t, u32 c)
     }
 }
 
-/* Renderizado de párrafos UTF-8 con ajuste de línea y soporte de scroll vertical */
-static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 c)
+/* Renderizado de párrafos UTF-8 con soporte de enlaces coloreados (\x01 / \x02) y scroll */
+static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 default_color)
 {
     int cur_x = start_x;
     int cur_y = start_y - scroll_offset;
     int char_w = 9 * scale;
     int total_height = 0;
     const char *p = t;
+    u32 current_color = default_color;
 
     while (*p) {
-        while (*p == ' ' || *p == '\n') {
+        while (*p == ' ' || *p == '\n' || *p == '\x01' || *p == '\x02') {
             if (*p == '\n') {
                 cur_x = start_x;
                 cur_y += line_spacing;
+            } else if (*p == '\x01') {
+                current_color = 0x002563eb; /* Azul enlace vibrante */
+            } else if (*p == '\x02') {
+                current_color = default_color; /* Color de texto normal */
             }
             p++;
         }
         if (!*p) break;
 
-        /* Medir longitud de la palabra en caracteres visuales UTF-8 */
+        /* Medir longitud de la palabra ignorando marcas de control */
         const char *w_start = p;
         int word_chars = 0;
         const char *temp_p = p;
         while (*temp_p && *temp_p != ' ' && *temp_p != '\n') {
+            if (*temp_p == '\x01' || *temp_p == '\x02') {
+                temp_p++;
+                continue;
+            }
             utf8_next_codepoint(&temp_p);
             word_chars++;
         }
@@ -256,6 +294,16 @@ static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, i
         /* Renderizar palabra */
         if (cur_y + 16 * scale >= clip_top && cur_y <= clip_bottom) {
             while (p < temp_p) {
+                if (*p == '\x01') {
+                    current_color = 0x002563eb;
+                    p++;
+                    continue;
+                }
+                if (*p == '\x02') {
+                    current_color = default_color;
+                    p++;
+                    continue;
+                }
                 uint32_t cp = utf8_next_codepoint(&p);
                 const uint8_t *glyph = font8x16_get_glyph(cp);
 
@@ -267,7 +315,7 @@ static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, i
                             int px = cur_x + col * scale;
                             int py = cur_y + row * scale;
                             if (px >= start_x && px < start_x + max_width && py >= clip_top && py <= clip_bottom) {
-                                fb[cur][py * W + px] = c;
+                                fb[cur][py * W + px] = current_color;
                             }
                         }
                     }
@@ -369,11 +417,12 @@ static void navigate_to(const char *input_url)
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
             snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, target_url);
 
-            char clean_body[7800] = "";
-            eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, clean_body, sizeof(clean_body), page_links, &page_links_count);
+            char raw_extracted[7800] = "";
+            eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, raw_extracted, sizeof(raw_extracted), page_links, &page_links_count);
 
-            if (strlen(clean_body) > 0) {
-                snprintf(page_body, sizeof(page_body), "%s", clean_body);
+            if (strlen(raw_extracted) > 0) {
+                /* Formatear Markdown limpio inyectando saltos en ## y marcas de enlace */
+                eonsurf_format_markdown_and_links(raw_extracted, page_body, sizeof(page_body), md_links, &md_links_count, MAX_CLEAN_LINKS);
             } else {
                 snprintf(page_body, sizeof(page_body), "Página recibida (Tamaño: %u bytes).", (unsigned int)chunk.size);
             }
@@ -507,19 +556,19 @@ int main(void)
         text_hd(76, 22, 1, ">", 0x00ffffff);
 
         /* Barra de Direcciones / Búsqueda con píldora y borde de brillo cian */
-        int url_bar_w = W - 390;
+        int url_bar_w = W - 440;
         draw_rounded_pill(fb[cur], W, 112, 11, url_bar_w, 38, 8, 0x00030712, 0x000284c7);
 
         snprintf(buf, sizeof(buf), "%s", current_url);
-        text_hd(126, 22, 1, buf, 0x0038bdf8);
+        draw_text_clipped(126, 22, 1, buf, 0x0038bdf8, 112 + url_bar_w - 15);
 
-        /* Badge oficial Cell B.E. • 60 FPS */
-        draw_rounded_pill(fb[cur], W, W - 264, 13, 148, 34, 6, 0x000f172a, 0x0006b6d4);
-        text_hd(W - 252, 22, 1, "Cell B.E. | 60fps", 0x0038bdf8);
+        /* Badge oficial Cell B.E. | 60 FPS (Desplazado a la izquierda sin solapamiento) */
+        draw_rounded_pill(fb[cur], W, W - 310, 13, 175, 34, 6, 0x000f172a, 0x0006b6d4);
+        text_hd(W - 298, 22, 1, "Cell B.E. | 60fps", 0x0038bdf8);
 
         /* Indicador de red activa Online/Offline */
-        draw_rounded_pill(fb[cur], W, W - 104, 13, 84, 34, 6, net_initialized ? 0x00064e3b : 0x00450a0a, net_initialized ? 0x0010b981 : 0x00ef4444);
-        text_hd(W - 90, 22, 1, net_initialized ? "ONLINE" : "OFFLINE", 0x00ffffff);
+        draw_rounded_pill(fb[cur], W, W - 120, 13, 98, 34, 6, net_initialized ? 0x00064e3b : 0x00450a0a, net_initialized ? 0x0010b981 : 0x00ef4444);
+        text_hd(W - 104, 22, 1, net_initialized ? "ONLINE" : "OFFLINE", 0x00ffffff);
 
         /* 3. Marcadores Rapidos */
         rect_rounded(60, 70, 270, 36, 5, 0x00242b38);
@@ -619,11 +668,8 @@ int main(void)
             if (r % 2 == 1) {
                 rect(col_right_x + 14, row_y - 2, col_right_w - 28, 24, 0x00f8fafc);
             }
-            char val_buf[26];
-            strncpy(val_buf, g_layout.info_rows[r].value, sizeof(val_buf) - 1);
-            val_buf[sizeof(val_buf) - 1] = '\0';
             text_hd(col_right_x + 18, row_y + 3, 1, g_layout.info_rows[r].key, 0x000f172a);
-            text_hd(col_right_x + 115, row_y + 3, 1, val_buf, 0x002563eb);
+            draw_text_clipped(col_right_x + 115, row_y + 3, 1, g_layout.info_rows[r].value, 0x002563eb, col_right_x + col_right_w - 16);
         }
 
         /* 5. Panel de Enlaces Hipertextuales */
