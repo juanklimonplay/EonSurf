@@ -16,7 +16,7 @@
 #include <curl/curl.h>
 
 #include "font8x16.h"
-#include "osk_ps3.h"
+#include "eonsurf_osk.h"
 #include "eonsurf_fsm.h"
 #include "eonsurf_layout.h"
 #include "eonsurf_md_clean.h"
@@ -141,6 +141,7 @@ static void on_sysutil(u64 status, u64 param, void *ud)
 {
     (void)param; (void)ud;
     if (status == SYSUTIL_EXIT_GAME) running = 0;
+    eonsurf_osk_handle_sysutil_event(status);
 }
 
 static void init_screen(void)
@@ -547,6 +548,12 @@ int main(void)
     while (running) {
         int ax = 128, ay = 128;
         sysUtilCheckCallback();
+
+        /* Comprobar si el usuario confirmo texto en el teclado Sony OSK */
+        char osk_user_text[256];
+        if (eonsurf_osk_poll_result(osk_user_text, sizeof(osk_user_text))) {
+            navigate_to(osk_user_text);
+        }
         ioPadGetInfo(&pinfo);
         if (pinfo.status[0]) {
             ioPadGetData(0, &pdata);
@@ -569,11 +576,8 @@ int main(void)
 
             /* Teclado Sony OSK con Triangulo */
             if (pdata.BTN_TRIANGLE && !prev_btn_triangle) {
-                char url_ingresada[512] = "";
-                if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
-                    if (strlen(url_ingresada) > 0) {
-                        navigate_to(url_ingresada);
-                    }
+                if (!eonsurf_osk_is_active()) {
+                    eonsurf_osk_open("EonSurf: Escribi una busqueda o URL", current_url);
                 }
             }
             prev_btn_triangle = pdata.BTN_TRIANGLE;
@@ -644,11 +648,8 @@ int main(void)
                     }
                     /* Barra de URL superior */
                     else if (py >= 10 && py <= 50 && px >= 120 && px <= 120 + (W - 440)) {
-                        char url_ingresada[512] = "";
-                        if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
-                            if (strlen(url_ingresada) > 0) {
-                                navigate_to(url_ingresada);
-                            }
+                        if (!eonsurf_osk_is_active()) {
+                            eonsurf_osk_open("EonSurf: Ingresar URL o Busqueda Web", current_url);
                         }
                     }
                     /* Marcadores Rapidos */
