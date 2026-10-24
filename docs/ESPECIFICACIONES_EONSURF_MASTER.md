@@ -444,3 +444,42 @@ Para garantizar estabilidad inquebrantable frente a las condiciones más adversa
 | **Cliente EonAI** | REST vía mbedTLS + libcurl | Forzar aislamiento completo en un **hilo PPU esclavo asíncrono** (Worker). | El renderizado se mantiene clavado a **60 FPS estables** sin micro-stuttering. |
 | **Historial (VRAM)**| Snapshots en 230 MB GDDR3 | Copias directas GPU a GPU con `gcmSetTransferImage(LOCAL_TO_LOCAL)`. | Retorno de páginas instantáneo (< 0.2 ms) con **cero impacto en CPU/EIB**. |
 | **Descargas Masivas**| Soporte NTFS USB (000–007)| Rutina de rescate Fail-Safe orientada a `/dev_hdd0/downloads/`. | Protección total contra desconexiones en caliente; **evita el triple pitido fatal**. |
+
+---
+
+## 21. El Último Eslabón de Silicio: Alineamiento a 128 Bytes, Barreras de Memoria (`lwsync`) y Checklist Final
+
+Para certificar el funcionamiento impecable en consolas físicas reales (modelos Fat / Slim con condensadores NEC/TOKIN desgastados y tolerancias eléctricas críticas), el código implementa las directivas de silicio de bajo nivel del Cell Broadband Engine:
+
+### 1. Alineamiento Estricto de Líneas de Caché (`__attribute__((aligned(128)))`)
+- **Física del Silicio:** La PPU y las 6 SPUs operan con líneas de caché L2 rígidas de 128 bytes. Si un búfer de intercambio de píxeles o descriptor de la cola circular FIFO cruza los límites de una línea (*Cache Line Straddling*), se genera contención en el bus EIB (204.8 GB/s), provocando artefactos visuales o micro-congelamientos.
+- **Implementación en C:** Todos los búferes de DMA y estructuras compartidas entre la PPU y el RSX se declaran forzando la alineación nativa:
+
+```c
+/* Búfer de transferencia DMA alineado a la línea de caché del Cell */
+uint8_t rsx_shared_buffer[BUFFER_SIZE] __attribute__((aligned(128)));
+```
+
+### 2. Barreras de Memoria Hardware (`lwsync`) contra Inversión de Sincronismo
+- **Condición de Carrera (Race Condition):** Debido a la ejecución fuera de orden de la PPU, es imperativo garantizar que los datos dibujados por NetSurf hayan abandonado físicamente los registros de la CPU y estén volcados en la RAM XDR antes de que el RSX comience la transferencia DMA.
+- **Implementación en C:** Se inyecta la instrucción de ensamblador `lwsync` (Lightweight Synchronize) como barrera de memoria antes de cada llamada a `gcmSetTransferImage`:
+
+```c
+/* Sincronización atómica de silicio antes de ceder el búfer al RSX */
+static inline void eonsurf_sync_and_blit(void) {
+    /* Forzar a la CPU a vaciar sus registros hacia la RAM XDR */
+    __asm__ __volatile__ ("lwsync" : : : "memory");
+
+    /* Ahora el RSX puede leer de forma segura vía DMA sin colisiones */
+    gcmSetTransferImage(ctx, GCM_TRANSFER_LOCAL_TO_LOCAL, ...);
+}
+```
+
+---
+
+### 📋 Lista de Verificación Final de Silicio (Checklist de Producción)
+
+1. **Alineamiento de Memoria (128 Bytes):** Todos los búferes compartidos entre hilos y la GPU cuentan con `__attribute__((aligned(128)))`.
+2. **Estabilidad Térmica Activa:** Lectura continua de la syscall 383 para salvar la sesión y apagar de emergencia (syscall 379 con opcode `0x1100`) si el Cell supera los 85°C.
+3. **Firmado y Resolución de Stubs:** El script de compilación ejecuta rigurosamente `sprxlinker` antes de `make_fself` / `make_self_npdrm` para evitar saltos nulos (`0x00000000`).
+4. **Sandboxing de Red & Anti-OOM:** Corte en 3.000 nodos elementales con el autómata FSM en PPU1 y purga atómica de memoria con `arena_destroy()` al cerrar pestañas.
