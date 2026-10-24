@@ -71,7 +71,7 @@ static inline void eonsurf_osk_handle_sysutil_event(uint64_t status) {
             oskUnloadAsync(&g_osk_out_param);
             break;
 
-        case SYSUTIL_OSK_CLIENT_CANCELED:
+        case SYSUTIL_OSK_INPUT_CANCELED:
             oskAbort();
             oskUnloadAsync(&g_osk_out_param);
             g_osk_state = EON_OSK_CANCELED;
