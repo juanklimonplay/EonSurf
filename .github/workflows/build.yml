@@ -115,8 +115,8 @@ jobs:
           echo "[LD] Enlazando EonSurf.elf..."
           powerpc64-ps3-elf-gcc build-eonsurf/*.o \
             ${LIB_FLAGS} \
-            -lrsx -lgcm_sys -lio -lfont -laudio -lmbedtls -lcurl \
-            -Wl,--start-group -lnet -lsysutil -lsysmodule -lm -lrt -llv2 -Wl,--end-group \
+            -lrsx -lgcm_sys -lio -lfont -laudio \
+            -Wl,--start-group -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lnet -lsysutil -lsysmodule -lm -lrt -llv2 -Wl,--end-group \
             -o build-eonsurf/EonSurf.elf
 
           # Resolver stubs de la tabla OPD
