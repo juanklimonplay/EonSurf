@@ -630,3 +630,22 @@ Para culminar la especificación más completa y robusta de la historia del homebr
 8. **Audio Opus en SPU:** Decodificador libopus compilado con `-DFIXED_POINT=1` (75 KB de codigo) sin SPU Overlays.
 9. **USB NTFS / exFAT > 4GB:** Enlace de `libntfs_ext.a` con 128 paginas de cache en RAM y desmontaje seguro antes de salir.
 10. **Corte Termico de Emergencia (>83Â°C):** Buzzer (Syscall 392) + SysFsSync + Apagado limpio por Syscon con Syscall 379 (0x1100).
+
+
+---
+
+**Created by JuAnKLiMoNN**
+
+## 26. Los 3 Pilares de Impacto Real (100/100 Absoluto)
+
+Para cerrar la brecha entre la Arquitectura de Silicio y la experiencia diaria del usuario en su televisor:
+
+1. **Enfrentar el Muro de Cloudflare y fingerprinting TLS 11/**
+   - **Modo Lector / Scraper Inteligente (boton Select):** Extraccion limpia de texto (via portales puente livianos estilo Jina Reader / A2rchive) en modo oscuro con fuentes FreeType2 a 1080p, sin cargar scripts pesados.
+   - **Suplantacion JE3 (JA3 Spoofing en mbedTLS):** Ordenar las cipher suites del Client Hello de mbedTLS para imitar exactamente a un navegador movil moderno, evitando bloqueos anti-ddos previos.
+
+2. **Descargas de Enlaces Indirectos (Resolvers Nativos en C):**
+   - **Micro-Modulo de Enlaces Directos (20 KB en C):** Intercepcion previa de URLs de MediaFire, Google Drive (`/info.gdid_proxy`), GitHub Releases y 1Fichier. Extraccion directa del link real del .pkg en C con request liviano y disparo automatico al descargador SATA I.
+
+3. **Banco de Pruebas de Estres (Stress-Test Suite en C):**
+   - **Modo de Diagnostico `stress_test.c`:** Rutina de prueba automatizada que abre y cierra 50 pestanas seguidas, descarga un archivo de 4 GB simultaneo mientras reproduce un stream de audio y ejecuta scroll saturado durante 2 horas. Probacion del 0 bytes de fuga de memoria en TLSF y 60 FPS estables.
