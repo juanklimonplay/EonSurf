@@ -57,11 +57,17 @@ jobs:
           echo "${PS3DEV}/ppu/bin" >> $GITHUB_PATH
           echo "${PS3DEV}/spu/bin" >> $GITHUB_PATH
 
-      - name: 7. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
+      - name: 7. Descargar NetSurf libnsfb y preparar fuentes
+        run: |
+          bash port/fetch.sh port/work
+
+      - name: 8. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
         run: |
           export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin:${PS3DEV}/spu/bin
           export PS3DEV=/usr/local/ps3dev
           export PSL1GHT=/usr/local/ps3dev
+          PREFIX=/usr/local/ps3dev/portlibs/ppu
+          WORK_DIR="port/work"
 
           # Directorios de compilación y empaquetado
           mkdir -p build-eonsurf
@@ -77,31 +83,39 @@ jobs:
           if [ -f "pkg/PIC1.PNG" ]; then cp pkg/PIC1.PNG pkg_build/PIC1.PNG; fi
           if [ -f "pkg/eonsurf.cfg" ]; then cp pkg/eonsurf.cfg pkg_build/USRDIR/; fi
 
-          # Compilación de objetos PPU con optimizaciones del Cell y AltiVec
-          SRC_DIR="src/source"
-          [ ! -d "$SRC_DIR" ] && SRC_DIR="src"
-          for src_file in ${SRC_DIR}/*.c port/ps3/osk_ps3.c; do
-            if [ -f "$src_file" ]; then
-              obj_file="build-eonsurf/$(basename "${src_file%.c}.o")"
-              echo "[CC] Compilando ${src_file} -> ${obj_file}"
-              powerpc64-ps3-elf-gcc -O2 -mcpu=cell -maltivec -mabi=altivec -Wall \
-                -I"${PSL1GHT}/include" \
-                -I"${PSL1GHT}/ppu/include" \
-                -I"${PS3DEV}/portlibs/ppu/include" \
-                -I"${SRC_DIR}" \
-                -Iport/ps3 \
-                -c "${src_file}" -o "${obj_file}"
-            fi
+          # Flags de inclusión y librerías
+          INC_FLAGS="-Isrc/source -Iport/ps3 -I${PSL1GHT}/include -I${PSL1GHT}/ppu/include -I${PREFIX}/include -I${WORK_DIR}/netsurf-all-3.11/libnsfb/include -I${WORK_DIR}/netsurf-all-3.11/libnsfb/src -I${WORK_DIR}/netsurf-all-3.11/libnsfb/src/plot"
+          LIB_FLAGS="-L${PSL1GHT}/lib -L${PSL1GHT}/ppu/lib -L${PREFIX}/lib"
+
+          NSFB_DIR="${WORK_DIR}/netsurf-all-3.11/libnsfb"
+          NSFB_SOURCES="
+            ${NSFB_DIR}/src/libnsfb.c
+            ${NSFB_DIR}/src/cursor.c
+            ${NSFB_DIR}/src/palette.c
+            ${NSFB_DIR}/src/surface/surface.c
+            ${NSFB_DIR}/src/surface/ram.c
+            ${NSFB_DIR}/src/plot/api.c
+            ${NSFB_DIR}/src/plot/util.c
+            ${NSFB_DIR}/src/plot/generic.c
+            ${NSFB_DIR}/src/plot/32bpp-xrgb8888.c
+            ${NSFB_DIR}/src/plot/32bpp-xbgr8888.c
+            ${NSFB_DIR}/src/plot/16bpp.c
+            ${NSFB_DIR}/src/plot/8bpp.c
+          "
+
+          # Compilación de objetos C con Cell B.E. y AltiVec
+          echo "[CC] Compilando fuentes EonSurf y libnsfb..."
+          for src_file in src/source/main.c port/ps3/osk_ps3.c port/ps3/surface_ps3.c ${NSFB_SOURCES}; do
+            obj_file="build-eonsurf/$(basename "${src_file%.c}.o")"
+            powerpc64-ps3-elf-gcc -O2 -mcpu=cell -maltivec -mabi=altivec -DNSFB_PS3_AVAILABLE -Wall \
+              ${INC_FLAGS} -c "${src_file}" -o "${obj_file}"
           done
 
           # Enlazar ELF respetando la jerarquía Lv2
           echo "[LD] Enlazando EonSurf.elf..."
           powerpc64-ps3-elf-gcc build-eonsurf/*.o \
-            -L"${PSL1GHT}/lib" \
-            -L"${PSL1GHT}/ppu/lib" \
-            -L"${PS3DEV}/portlibs/ppu/lib" \
-            -lrsx -lgcm_sys -lnet -lio -lfont -lfs -laudio \
-            -lsysutil -lsysmodule -lm -lrt -llv2 \
+            ${LIB_FLAGS} \
+            -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lfont -lfs -laudio -lm -lrt -llv2 \
             -o build-eonsurf/EonSurf.elf
 
           # Resolver stubs de la tabla OPD
@@ -141,7 +155,7 @@ jobs:
 
           ls -lh EonSurf-*.pkg build-eonsurf/EBOOT.BIN
 
-      - name: 8. Subir Artefactos al Build
+      - name: 9. Subir Artefactos al Build
         uses: actions/upload-artifact@v4
         with:
           name: EonSurf-Navegador-pkg
