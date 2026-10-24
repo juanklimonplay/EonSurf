@@ -50,14 +50,13 @@ powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
     -o build-eonsurf/EonSurf.elf
 
 echo "==> 4. Firmando ejecutable y generando EonSurf-Navegador.pkg..."
-if command -v make_self_npdrm >/dev/null 2>&1; then
-    make_self_npdrm build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN UP0001-EONSURF01_00-0000000000000000 || \
-    make_self build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN || \
+# Usar make_fself directo para compatibilidad universal (RPCS3 + HEN/CFW sin bloqueo de clave DRM)
+if command -v make_fself >/dev/null 2>&1; then
+    make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+elif command -v fself >/dev/null 2>&1; then
     fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
 elif command -v make_self >/dev/null 2>&1; then
     make_self build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
-elif command -v fself >/dev/null 2>&1; then
-    fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
 else
     cp build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
 fi
