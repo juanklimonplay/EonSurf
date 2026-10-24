@@ -19,11 +19,11 @@ cp port/ps3/osk_ps3.c "$WORK_DIR/netsurf-all-3.11/netsurf/frontends/framebuffer/
 
 echo "==> 3. Generando binario EonSurf para PS3..."
 mkdir -p build-eonsurf/pkg
-cp repo/pkg/ICON0.PNG build-eonsurf/pkg/ 2>/dev/null || cp hola/pkg/ICON0.PNG build-eonsurf/pkg/
-cp repo/pkg/PIC1.PNG build-eonsurf/pkg/ 2>/dev/null || cp hola/pkg/PIC1.PNG build-eonsurf/pkg/ || true
-cp hola/pkg/sfo.xml build-eonsurf/pkg/
+cp repo/pkg/ICON0.PNG build-eonsurf/pkg/ 2>/dev/null || cp src/pkg/ICON0.PNG build-eonsurf/pkg/
+cp repo/pkg/PIC1.PNG build-eonsurf/pkg/ 2>/dev/null || cp src/pkg/PIC1.PNG build-eonsurf/pkg/ || true
+cp src/pkg/sfo.xml build-eonsurf/pkg/
 
-INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/src -I$WORK_DIR/netsurf-all-3.11/libnsfb/src/plot"
+INC_FLAGS="-Isrc/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/src -I$WORK_DIR/netsurf-all-3.11/libnsfb/src/plot"
 LIB_FLAGS="-L$PSL1GHT/lib -L$PSL1GHT/ppu/lib -L$PREFIX/lib"
 
 NSFB_DIR="$WORK_DIR/netsurf-all-3.11/libnsfb"
@@ -44,7 +44,7 @@ NSFB_SOURCES="
 
 echo "Enlazando EonSurf con libnsfb y driver RSX nativo..."
 powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
-    port/ps3/surface_ps3.c port/ps3/osk_ps3.c hola/source/main.c $NSFB_SOURCES \
+    port/ps3/surface_ps3.c port/ps3/osk_ps3.c src/source/main.c $NSFB_SOURCES \
     $INC_FLAGS $LIB_FLAGS \
     -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lrt -llv2 -lm \
     -o build-eonsurf/EonSurf.elf
