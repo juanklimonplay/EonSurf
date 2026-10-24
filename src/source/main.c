@@ -27,6 +27,7 @@
 #include "stb_image.h"
 #include "eonsurf_interactive_media.h"
 #include "eonsurf_dynamic_web.h"
+#include "eonsurf_history.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -86,6 +87,9 @@ static void init_default_layout(void) {
     strncpy(g_layout.title, "PlayStation 3", sizeof(g_layout.title) - 1);
     strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
     
+    /* Inicializar estado inicial en la pila de historial */
+    eonsurf_history_push(current_url, page_body, 0, 200, strlen(page_body));
+
     /* Filas iniciales dinámicas para Ficha Técnica */
     g_info_row_count = 5;
     strncpy(g_infobox_header, "Ficha Tecnica", sizeof(g_infobox_header) - 1);
@@ -388,6 +392,7 @@ static size_t http_write_callback(void *contents, size_t size, size_t nmemb, voi
 static void navigate_to(const char *input_url)
 {
     char target_url[512] = "";
+    eonsurf_history_save_current_scroll(scroll_y);
 
     eonsurf_build_search_url(input_url, target_url, sizeof(target_url));
 
@@ -463,6 +468,9 @@ static void navigate_to(const char *input_url)
                 strncpy(g_layout.title, g_infobox_header, sizeof(g_layout.title) - 1);
             }
             strncpy(g_layout.subtitle, target_url, sizeof(g_layout.subtitle) - 1);
+
+            /* Guardar página en la pila de historial con snapshot en RAM */
+            eonsurf_history_push(current_url, page_body, 0, (int)response_code, chunk.size);
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
             snprintf(page_body, sizeof(page_body), "No se pudo obtener respuesta de %s: %s", target_url, curl_easy_strerror(res));
@@ -480,6 +488,9 @@ int main(void)
     char buf[128];
     int prev_btn_triangle = 0;
     int prev_btn_cross = 0;
+    int prev_btn_circle = 0;
+    int prev_btn_left = 0;
+    int prev_btn_right = 0;
 
     sysUtilRegisterCallback(SYSUTIL_EVENT_SLOT0, on_sysutil, NULL);
     init_screen();
@@ -524,42 +535,95 @@ int main(void)
             }
             prev_btn_triangle = pdata.BTN_TRIANGLE;
 
-            /* Clic con Cruz [X] */
-            if (pdata.BTN_CROSS && !prev_btn_cross) {
-                /* 1. Verificar si hizo clic sobre un enlace en el texto */
-                const char *clicked_link = eonsurf_check_link_click(px, py);
-                if (clicked_link) {
-                    navigate_to(clicked_link);
+            /* 1. Volver Atras: Boton Circulo (O) o D-Pad Izquierda */
+            if ((pdata.BTN_CIRCLE && !prev_btn_circle) || (pdata.BTN_LEFT && !prev_btn_left)) {
+                int restored_scroll = 0;
+                int restored_code = 200;
+                size_t restored_dl = 0;
+                if (eonsurf_history_go_back(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
+                    scroll_y = restored_scroll;
+                    snprintf(page_title, sizeof(page_title), "%s", current_url);
+                    /* Re-extraer enlaces y telemetria al instante sin usar red */
+                    eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                 }
-                /* Barra de URL superior */
-                if (py >= 10 && py <= 50) {
-                    char url_ingresada[512] = "";
-                    if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
-                        if (strlen(url_ingresada) > 0) {
-                            navigate_to(url_ingresada);
+            }
+            prev_btn_circle = pdata.BTN_CIRCLE;
+            prev_btn_left = pdata.BTN_LEFT;
+
+            /* 2. Ir Adelante: D-Pad Derecha */
+            if (pdata.BTN_RIGHT && !prev_btn_right) {
+                int restored_scroll = 0;
+                int restored_code = 200;
+                size_t restored_dl = 0;
+                if (eonsurf_history_go_forward(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
+                    scroll_y = restored_scroll;
+                    snprintf(page_title, sizeof(page_title), "%s", current_url);
+                    eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
+                }
+            }
+            prev_btn_right = pdata.BTN_RIGHT;
+
+            /* 3. Clic con Cruz [X] */
+            if (pdata.BTN_CROSS && !prev_btn_cross) {
+                /* A. Clic en botones '<' o '>' de la barra superior */
+                int nav_click = eonsurf_check_nav_buttons_click(px, py);
+                if (nav_click == -1) {
+                    /* Clic con cursor en '<' (Back) */
+                    int restored_scroll = 0, restored_code = 200; size_t restored_dl = 0;
+                    if (eonsurf_history_go_back(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
+                        scroll_y = restored_scroll;
+                        snprintf(page_title, sizeof(page_title), "%s", current_url);
+                        eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                        eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
+                    }
+                } else if (nav_click == 1) {
+                    /* Clic con cursor en '>' (Forward) */
+                    int restored_scroll = 0, restored_code = 200; size_t restored_dl = 0;
+                    if (eonsurf_history_go_forward(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
+                        scroll_y = restored_scroll;
+                        snprintf(page_title, sizeof(page_title), "%s", current_url);
+                        eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                        eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
+                    }
+                }
+                /* B. Clic sobre enlace en el texto */
+                else {
+                    const char *clicked_link = eonsurf_check_link_click(px, py);
+                    if (clicked_link) {
+                        navigate_to(clicked_link);
+                    }
+                    /* Barra de URL superior */
+                    else if (py >= 10 && py <= 50 && px >= 120 && px <= 120 + (W - 440)) {
+                        char url_ingresada[512] = "";
+                        if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
+                            if (strlen(url_ingresada) > 0) {
+                                navigate_to(url_ingresada);
+                            }
                         }
                     }
-                }
-                /* Marcadores Rapidos */
-                else if (py >= 65 && py <= 112) {
-                    if (px >= 60 && px <= 330) {
-                        navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
-                    } else if (px >= 350 && px <= 620) {
-                        navigate_to("https://lite.duckduckgo.com/lite/?q=playstation+3+homebrew");
-                    } else if (px >= 640 && px <= 910) {
-                        navigate_to("https://raw.githubusercontent.com/aldostools/webMAN-MOD/master/README.md");
+                    /* Marcadores Rapidos */
+                    else if (py >= 65 && py <= 112) {
+                        if (px >= 60 && px <= 330) {
+                            navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
+                        } else if (px >= 350 && px <= 620) {
+                            navigate_to("https://lite.duckduckgo.com/lite/?q=playstation+3+homebrew");
+                        } else if (px >= 640 && px <= 910) {
+                            navigate_to("https://raw.githubusercontent.com/aldostools/webMAN-MOD/master/README.md");
+                        }
                     }
-                }
-                /* Enlaces dinamicos en el panel de navegacion */
-                else if (py >= H - 125 && py <= H - 45 && page_links_count > 0) {
-                    for (size_t k = 0; k < page_links_count && k < 6; k++) {
-                        int col = k % 3;
-                        int row = k / 3;
-                        int btn_x = 60 + col * 380;
-                        int btn_y = (H - 120) + row * 34;
-                        if (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 30) {
-                            navigate_to(page_links[k].url);
-                            break;
+                    /* Enlaces dinamicos en el panel de navegacion */
+                    else if (py >= H - 125 && py <= H - 45 && page_links_count > 0) {
+                        for (size_t k = 0; k < page_links_count && k < 6; k++) {
+                            int col = k % 3;
+                            int row = k / 3;
+                            int btn_x = 60 + col * 380;
+                            int btn_y = (H - 120) + row * 34;
+                            if (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 30) {
+                                navigate_to(page_links[k].url);
+                                break;
+                            }
                         }
                     }
                 }
@@ -578,12 +642,16 @@ int main(void)
         rect(0, 0, W, 58, 0x000b0f17);
         rect(0, 58, W, 2, 0x000284c7);
 
-        /* Botones Atrás / Adelante con píldora brillante */
-        draw_rounded_pill(fb[cur], W, 20, 12, 36, 36, 6, 0x001e293b, 0x0038bdf8);
-        text_hd(32, 22, 1, "<", 0x00ffffff);
+        /* Botones Atrás / Adelante con indicación visual activa/inactiva */
+        uint32_t back_border = eonsurf_can_go_back() ? 0x0000e5ff : 0x00334155;
+        uint32_t back_text   = eonsurf_can_go_back() ? 0x00ffffff : 0x0064748b;
+        draw_rounded_pill(fb[cur], W, BTN_BACK_X, BTN_BACK_Y - 2, BTN_BACK_W, BTN_BACK_H, 6, 0x001e293b, back_border);
+        text_hd(BTN_BACK_X + 10, BTN_BACK_Y + 7, 1, "<", back_text);
 
-        draw_rounded_pill(fb[cur], W, 64, 12, 36, 36, 6, 0x001e293b, 0x0038bdf8);
-        text_hd(76, 22, 1, ">", 0x00ffffff);
+        uint32_t fwd_border  = eonsurf_can_go_forward() ? 0x0000e5ff : 0x00334155;
+        uint32_t fwd_text    = eonsurf_can_go_forward() ? 0x00ffffff : 0x0064748b;
+        draw_rounded_pill(fb[cur], W, BTN_FWD_X, BTN_FWD_Y - 2, BTN_FWD_W, BTN_FWD_H, 6, 0x001e293b, fwd_border);
+        text_hd(BTN_FWD_X + 10, BTN_FWD_Y + 7, 1, ">", fwd_text);
 
         /* Barra de Direcciones / Búsqueda con píldora y borde de brillo cian */
         int url_bar_w = W - 440;
