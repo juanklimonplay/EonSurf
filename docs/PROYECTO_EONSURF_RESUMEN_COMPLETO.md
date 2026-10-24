@@ -23,6 +23,13 @@ EonSurf nace con el propósito de saldar la mayor deuda histórica de la scene d
    • Aceleración Gráfica: RSX Direct Blitting & Hardware YUV-to-RGB Shaders
    • Concurrencia de Red y Multimedia: Cell SPU Offloading & DMA Multistream
    • Entorno Compatible: PS3HEN 3.x, CFW Evilnat / Cobra 8.5+, DEX y RPCS3
+--------------------------------------------------------------------------------
+   Agradecimiento Especial y Créditos a las Leyendas de la Scene:
+   • Aldo Vargas (@aldostools): Por sus librerías maestras de webMAN MOD e
+     IRISMAN (montaje NTFS usb_io, lecturas de temperatura cpursx y vshtask notify).
+   • Estwald (Hermes): Por la librería gráfica Tiny3D y librerías de sonido SPU.
+   • Evilnat: Por mantener vivo el Custom Firmware y las llamadas al sistema Lv2.
+   • Equipo PSL1GHT & NetSurf: Por el SDK abierto y el motor web más eficiente.
 ================================================================================
 ```
 
@@ -163,7 +170,10 @@ La arquitectura de hardware de la PS3 cuenta con dos bloques de 256 MB con carac
    La PPU únicamente demuxea los paquetes H.264/AAC. La decodificación corre por hardware en el decodificador nativo `cellVdec`, y la conversión de color YUV420 a RGB la ejecuta un shader de fragmentos en el RSX, logrando reproducción a 720p/1080p a 60 FPS con 0% de uso de CPU.
 2. **Instalación de PKGs en Caliente:**  
    Sistema dual que envía el comando HTTP loopback a webMAN MOD (`GET /install.ps3?url=...`) o crea la tarea `.pdb` en `/dev_hdd0/vsh/task/0000000X/` para que la consola continúe la descarga en segundo plano desde el XMB.
-3. **Gestión Térmica y Syscall 383:**  
+3. **Gestión Térmica, Notificaciones OSD y Soporte NTFS (Integración de Módulos de Aldo Vargas @aldostools):**  
+   - **Lectura Térmica de Precisión (`cpursx.h`):** Interrogación directa a la syscall 383 con el algoritmo de decodificación de grados Celsius de Aldo (`_mem >> 24` para Cell CPU y `(_mem >> 16) & 0xff` para RSX GPU) garantizando coincidencia milimétrica con el menú webMAN MOD.
+   - **Notificaciones Flotantes del Sistema (`notify.h`):** Emisión de avisos emergentes oficiales de Sony en la esquina superior derecha (`vshtask_notify`) al cambiar de velocidad de cursor (R3), activar Modo Lector o completar descargas.
+   - **Descargas sin Límite de 4 GB (`mount_ntfs.h`):** Integración del montador en caliente de unidades externas USB (`__io_ntfs_usb000` a `usb007`) permitiendo guardar descargas masivas (ISOs, paquetes y archivos de más de 4 GB) en discos formateados en NTFS.  
    Lectura de temperaturas de CPU (Cell) y GPU (RSX) mediante la llamada al sistema 383. Para el control del ventilador se envía la solicitud por socket local a webMAN MOD, preservando la configuración térmica del usuario.
 
 ---
