@@ -495,3 +495,47 @@ sgenbind\):** NetSurf ya integra la capa de bindings entre su árbol DOM (\libdom
     3. Crea el archivo de seguridad \/dev_hdd0/game/EONSURF01/USRDIR/safe_mode.flag\.
     4. Invoca la llamada del kernel: \sysProcessExitSpawn2("/dev_hdd0/game/EONSURF01/USRDIR/EBOOT.BIN", NULL, NULL, NULL, 0, 1001, SYS_PROCESS_SPAWN_STACK_SIZE_1M)\.
     5. El kernel Lv2 descarga el proceso de forma limpia y reinicia EonSurf instantáneamente sin salir al XMB y sin emitir pitidos de error. Al arrancar, \main.c\ detecta la bandera, la elimina y entra en Modo Seguro.
+
+---
+
+## 23. Arquitectura Multimedia, Encolado PKG Nativo y Gestión Térmica (Secretos de la Scene)
+
+Para completar el blindaje de ingeniería de nivel comercial de EonSurf, se integran los 3 secretos mejor guardados de la scene de PlayStation 3:
+
+### 1. Video HTML5 / YouTube Liviano: El Secreto de Movian (cellVdec + Shader YUV en RSX)
+- **Demuxing Ligero en PPU:** Uso de versión mínima de \libavformat\ para extraer NAL units H.264 y audio AAC en XDR.
+- **Decodificación por Hardware en SPUs (\SYSMODULE_VDEC\ / \cellVdec\):** 
+  - Inicialización con \CELL_VDEC_CODEC_TYPE_AVC\ (soporta hasta High Profile Level 4.2).
+  - Sony procesa el bitstream comprimido internamente en las SPUs y devuelve planos crudos **YUV420 Planar (NV12 / YV12)**.
+- **Conversión YUV ? RGB en el RSX (Cero Carga de PPU):**
+  - Se suben los 3 planos (Y, U, V) por DMA a la VRAM como texturas \LUMINANCE8\.
+  - Un Fragment Shader simple en el RSX realiza la multiplicación matricial YUV-RGB directamente en la GPU. La CPU principal (PPU) queda libre al 95% permitiendo 60 FPS estables en 720p/1080p.
+- **Integración Invidious / MP4:** Para flujos web (itag 18 [360p] o itag 22 [720p]), se superpone un reproductor hardware en la Capa 1 del RSX.
+
+### 2. Instalación de PKGs en Caliente: El Sistema Dual (webMAN MOD Loopback + Burbuja XMB .pdb)
+- **Método A: Puente Local con webMAN MOD (Instalación Inmediata en 1 Toque):**
+  - webMAN MOD escucha en \127.0.0.1:80\ dentro del proceso \sh.self\.
+  - Al finalizar una descarga en \/dev_hdd0/packages/archivo.pkg\, EonSurf emite una petición HTTP local GET:
+    \GET /install.ps3/dev_hdd0/packages/archivo.pkg\ o notificación con trofeo: \GET /popup.ps3?¡Descarga_EonSurf_Completada!\
+  - webMAN MOD intercepta el comando y realiza el montaje o instalación desatendida.
+- **Método B: Cola Nativa en Segundo Plano de PKGi (\/dev_hdd0/vsh/task/\):**
+  - Para descargas masivas en segundo plano sin mantener EonSurf abierto:
+  - Se crea la carpeta numerada en \/dev_hdd0/vsh/task/0000000X/\.
+  - Se generan los 4 archivos de base de datos de Sony: \d0.pdb\, \d1.pdb\, \0.pdb\ e \ICON_FILE\.
+  - El sistema inyecta la tarea directamente en el gestor de descargas oficial de la burbuja de red del XMB.
+
+### 3. Gestión Térmica y Ventilador: Syscall 383 y Convivencia Pacífica con webMAN MOD
+- **Lectura Continua de Temperaturas (Syscall 383):**
+  - Compatible tanto en CFW Evilnat como en PS3HEN:
+    \\\c
+    // Syscall 383: tzone 0 = CELL, tzone 1 = RSX
+    uint32_t temp_cell = 0, temp_rsx = 0;
+    lv2syscall2(383, 0, (uint64_t)&temp_cell);
+    lv2syscall2(383, 1, (uint64_t)&temp_rsx);
+    uint8_t celsius_cell = (uint8_t)(temp_cell >> 24);
+    uint8_t celsius_rsx  = (uint8_t)(temp_rsx >> 24);
+    \\\
+  - Se actualiza cada 2–3 segundos en el HUD: Verde (< 70°C), Amarillo (70–77°C) y Rojo Alerta (= 78°C).
+- **Control del Ventilador sin Conflictos de Syscon (Syscall 409 vs 389):**
+  - **Detección de webMAN MOD:** Comprueba si webMAN está activo en puerto 80 o mediante syscall 409 (\sys_sm_get_fan_policy\). Si el modo dinámico está activo (\mode == 2\), EonSurf **no toca la syscall 389**, evitando la "guerra de payloads" que hace tironear la turbina de la consola.
+  - **Fallback de Protección en Consolas Stock (SYSCON Mode 1):** Si se detecta que la consola está en modo fábrica de Sony y el CELL supera los 75°C durante descargas pesadas, EonSurf eleva el cooler al 40% (\ x66\) vía syscall 389, restaurando el control original al salir.
