@@ -29,6 +29,7 @@
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_history.h"
 #include "eonsurf_downloader.h"
+#include "eonsurf_modern_ui.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -684,8 +685,8 @@ int main(void)
             }
         }
 
-        /* 1. Fondo elegante de escritorio (#1E222D) */
-        rect(0, 0, W, H, 0x001e222d);
+        /* 1. Fondo degradado vertical Titanium (#0A121C -> #182634) */
+        eonsurf_draw_titanium_background(fb[cur], W);
 
         /* 2. Barra de herramientas superior moderna Titanium Dark */
         rect(0, 0, W, 58, 0x000b0f17);
@@ -739,18 +740,17 @@ int main(void)
         int col_right_x = canvas_x + col_left_w + 20;
         int col_right_w = canvas_w - col_left_w - 20;
 
-        /* Sombra y cuerpo del artículo izquierdo */
-        rect_rounded(canvas_x - 3, canvas_y - 3, col_left_w + 6, canvas_h + 6, 8, 0x000f131a);
-        rect_rounded(canvas_x, canvas_y, col_left_w, canvas_h, 6, 0x00f8fafc);
+        /* Panel Izquierdo (70%): Dark Glass Titanium con borde suavizado y degradado */
+        eonsurf_draw_glass_panel(fb[cur], W, canvas_x, canvas_y, col_left_w, canvas_h, 10,
+                                 0xFF233040, 0xFF141D28, 0xFF3A526B, 240);
 
-        /* Cabecera del artículo web */
-        rect(canvas_x, canvas_y, col_left_w, 42, 0x00f1f5f9);
-        rect(canvas_x, canvas_y + 42, col_left_w, 1, 0x00e2e8f0);
-        text_hd(canvas_x + 20, canvas_y + 13, 1, page_title, 0x000f172a);
+        /* Cabecera translúcida del artículo */
+        rect_rounded(canvas_x + 2, canvas_y + 2, col_left_w - 4, 38, 8, 0x0018222d);
+        text_hd(canvas_x + 20, canvas_y + 12, 1, page_title, 0x00ffffff);
 
-        /* Contenido del artículo con tipografía Zap 8x16 en la columna izquierda */
+        /* Contenido del artículo con tipografía legible en blanco perla (#E8F0F8) */
         int content_height = text_wrapped_hd(canvas_x + 24, canvas_y + 55, 1, col_left_w - 48, 22,
-                                             canvas_y + 45, canvas_y + canvas_h - 15, scroll_y, page_body, 0x001e293b);
+                                             canvas_y + 45, canvas_y + canvas_h - 15, scroll_y, page_body, 0x00e8f0f8);
         max_scroll_y = (content_height > canvas_h - 60) ? (content_height - (canvas_h - 60)) : 0;
 
         /* Barra de scroll vertical de la columna izquierda */
@@ -764,12 +764,12 @@ int main(void)
             rect_rounded(canvas_x + col_left_w - 10, thumb_y, 6, thumb_h, 3, 0x003b82f6);
         }
 
-        /* --- COLUMNA DERECHA: TARJETA INFOBOX WIKIPEDIA (30%) --- */
-        rect_rounded(col_right_x - 3, canvas_y - 3, col_right_w + 6, canvas_h + 6, 8, 0x000f131a);
-        rect_rounded(col_right_x, canvas_y, col_right_w, canvas_h, 6, 0x00ffffff);
+        /* --- COLUMNA DERECHA: TARJETA INFOBOX WIKIPEDIA DARK GLASS (30%) --- */
+        eonsurf_draw_glass_panel(fb[cur], W, col_right_x, canvas_y, col_right_w, canvas_h, 10,
+                                 0xFF1E2938, 0xFF111822, 0xFF0284C7, 240);
 
-        /* Cabecera de la Infobox */
-        rect(col_right_x, canvas_y, col_right_w, 38, 0x000ea5e9);
+        /* Cabecera cian brillante de la Infobox */
+        rect_rounded(col_right_x + 2, canvas_y + 2, col_right_w - 4, 38, 8, 0x000284c7);
         text_hd(col_right_x + 16, canvas_y + 11, 1, g_layout.title, 0x00ffffff);
 
         /* Área de imagen fotográfica de la Infobox con textura nativa */
@@ -819,16 +819,22 @@ int main(void)
             }
         }
 
-        /* 6. Barra de estado inferior translúcida con botones PS3 estilizados */
-        rect(0, H - 36, W, 36, 0x000b0f17);
-        rect(0, H - 36, W, 1, 0x001e293b);
+                /* 6. Barra de estado inferior: Dock Dark Glass con iconos vectoriales DualShock 3 */
+        eonsurf_draw_glass_panel(fb[cur], W, 220, H - 42, 840, 36, 18, 0xFF1C2733, 0xFF101720, 0xFF34495E, 235);
 
-        /* Iconos de botones estilo PlayStation */
-        text_hd(24, H - 24, 1, "/_\\ Buscar / URL", 0x0010b981); /* Triángulo Verde */
-        text_hd(190, H - 24, 1, "X Abrir Enlace", 0x0038bdf8);   /* Cruz Azul */
-        text_hd(350, H - 24, 1, "O Volver Atras", 0x00f43f5e);   /* Círculo Rojo */
-        text_hd(510, H - 24, 1, "[R-Stick / Pad] Desplazar", 0x0094a3b8);
-        text_hd(770, H - 24, 1, "[SELECT+START] Salir", 0x0064748b);
+        eonsurf_draw_ps3_button_icon(fb[cur], W, 250, H - 24, 'T'); /* Triángulo Verde */
+        text_hd(268, H - 28, 1, "URL / Buscar", 0x00dce6f0);
+
+        eonsurf_draw_ps3_button_icon(fb[cur], W, 420, H - 24, 'X'); /* Cruz Azul */
+        text_hd(438, H - 28, 1, "Abrir Enlace", 0x00dce6f0);
+
+        eonsurf_draw_ps3_button_icon(fb[cur], W, 580, H - 24, 'O'); /* Círculo Rojo */
+        text_hd(598, H - 28, 1, "Volver", 0x00dce6f0);
+
+        eonsurf_draw_ps3_button_icon(fb[cur], W, 720, H - 24, 'S'); /* Cuadrado Rosa */
+        text_hd(738, H - 28, 1, "Descargas", 0x00dce6f0);
+
+        text_hd(870, H - 28, 1, "[R-Stick] Scroll", 0x0094a3b8);
 
         /* Coordenadas en píldora compacta */
         draw_rounded_pill(fb[cur], W, W - 180, H - 30, 160, 24, 4, 0x00030712, 0x001e293b);
