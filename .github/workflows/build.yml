@@ -127,7 +127,9 @@ jobs:
 
           # Generar binarios EBOOT y firmar
           if command -v make_fself >/dev/null 2>&1; then
-            make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+            make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN || true
+          elif command -v fself >/dev/null 2>&1; then
+            fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN || true
           fi
 
           if command -v make_self_npdrm >/dev/null 2>&1 && make_self_npdrm build-eonsurf/EonSurf.elf pkg_build/USRDIR/EBOOT.BIN "${CONTENT_ID}"; then
@@ -135,7 +137,12 @@ jobs:
           elif command -v make_fself_npdrm >/dev/null 2>&1 && make_fself_npdrm build-eonsurf/EonSurf.elf pkg_build/USRDIR/EBOOT.BIN; then
             echo "[OK] EBOOT.BIN firmado con make_fself_npdrm"
           else
-            cp build-eonsurf/EBOOT.BIN pkg_build/USRDIR/EBOOT.BIN
+            cp build-eonsurf/EonSurf.elf pkg_build/USRDIR/EBOOT.BIN
+          fi
+
+          # Asegurar copia en build-eonsurf para artefactos de RPCS3
+          if [ -f "pkg_build/USRDIR/EBOOT.BIN" ] && [ ! -f "build-eonsurf/EBOOT.BIN" ]; then
+            cp pkg_build/USRDIR/EBOOT.BIN build-eonsurf/EBOOT.BIN
           fi
 
           # Generar PARAM.SFO obligatorio para evitar error 80029564 en PS3
@@ -154,7 +161,7 @@ jobs:
             pkg --contentid "${CONTENT_ID}" pkg_build/ EonSurf-v0.3.1-alpha.pkg
           fi
 
-          ls -lh EonSurf-*.pkg build-eonsurf/EBOOT.BIN
+          ls -lh EonSurf-*.pkg pkg_build/USRDIR/EBOOT.BIN build-eonsurf/EonSurf.elf
 
       - name: 9. Subir Artefactos al Build
         uses: actions/upload-artifact@v4
@@ -162,6 +169,6 @@ jobs:
           name: EonSurf-Navegador-pkg
           path: |
             EonSurf-*.pkg
-            build-eonsurf/EBOOT.BIN
+            pkg_build/USRDIR/EBOOT.BIN
             build-eonsurf/EonSurf.elf
           retention-days: 30
