@@ -36,8 +36,12 @@ static nsfb_t *nsfb = NULL;
 
 static char current_url[512] = "https://eonsurf.ps3/inicio";
 static char page_title[256] = "EonSurf: Bienvenido a la Web de PS3";
-static char page_body[4096] = "Presiona [/_\\] o haz click en la barra superior para escribir una URL con el teclado Sony.";
+static char page_body[4096] = "Escribe cualquier termino o presiona los botones de marcadores superiores para navegar en vivo.";
 static int net_initialized = 0;
+
+/* Enlaces extraidos dinamicamente de la pagina actual */
+static eon_page_link_t page_links[EONSURF_MAX_LINKS];
+static size_t page_links_count = 0;
 
 static void on_sysutil(u64 status, u64 param, void *ud)
 {
@@ -188,21 +192,39 @@ static size_t http_write_callback(void *contents, size_t size, size_t nmemb, voi
         }
     }
 
-    /* SIEMPRE devolver 'total' para que libcurl sepa que los bytes fueron procesados y no aborte con CURLE_WRITE_ERROR (23) */
+    /* SIEMPRE devolver 'total' para que libcurl sepa que los bytes fueron procesados */
     return total;
 }
 
 /* Navegación y descarga web real por HTTPS */
-static void navigate_to(const char *url)
+static void navigate_to(const char *input_url)
 {
-    strncpy(current_url, url, sizeof(current_url) - 1);
+    char target_url[512] = "";
+
+    /* Si el usuario ingresa una busqueda (ej: "juegos ps3"), redirigir a DuckDuckGo Lite */
+    if (strncmp(input_url, "http://", 7) != 0 && strncmp(input_url, "https://", 8) != 0) {
+        char query_escaped[384] = "";
+        size_t qidx = 0;
+        for (size_t k = 0; input_url[k] != '\0' && qidx + 2 < sizeof(query_escaped); k++) {
+            if (input_url[k] == ' ') query_escaped[qidx++] = '+';
+            else query_escaped[qidx++] = input_url[k];
+        }
+        query_escaped[qidx] = '\0';
+        snprintf(target_url, sizeof(target_url), "https://lite.duckduckgo.com/lite/?q=%s", query_escaped);
+    } else {
+        strncpy(target_url, input_url, sizeof(target_url) - 1);
+        target_url[sizeof(target_url) - 1] = '\0';
+    }
+
+    strncpy(current_url, target_url, sizeof(current_url) - 1);
     current_url[sizeof(current_url) - 1] = '\0';
 
-    snprintf(page_title, sizeof(page_title), "Conectando: %s", url);
+    snprintf(page_title, sizeof(page_title), "Conectando: %s", target_url);
     snprintf(page_body, sizeof(page_body), "Descargando contenido web seguro mediante libcurl + mbedTLS...");
+    page_links_count = 0;
 
     if (!net_initialized) {
-        snprintf(page_title, sizeof(page_title), "Modo Sin Conexion: %s", url);
+        snprintf(page_title, sizeof(page_title), "Modo Sin Conexion: %s", target_url);
         snprintf(page_body, sizeof(page_body), "La red de PS3 no esta inicializada. Conecta la consola a Internet.");
         return;
     }
@@ -213,24 +235,24 @@ static void navigate_to(const char *url)
         chunk.data = malloc(1);
         chunk.size = 0;
 
-        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_URL, target_url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, http_write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (PlayStation 3; EonSurf/0.3.2; CellOS)");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); /* Aceptar certificados modernos en PS3 */
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
         CURLcode res = curl_easy_perform(curl);
         if (res == CURLE_OK && chunk.size > 0) {
             long response_code = 0;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-            snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, url);
+            snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, target_url);
 
-            /* Filtrar con el automata FSM eliminando JS, estilos y etiquetas */
+            /* Filtrar con el automata FSM eliminando JS, estilos y extrayendo enlaces reales */
             char clean_body[3800] = "";
-            eonsurf_fsm_extract_text(chunk.data, chunk.size, clean_body, sizeof(clean_body));
+            eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, clean_body, sizeof(clean_body), page_links, &page_links_count);
 
             if (strlen(clean_body) > 0) {
                 snprintf(page_body, sizeof(page_body), "%s", clean_body);
@@ -239,7 +261,7 @@ static void navigate_to(const char *url)
             }
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
-            snprintf(page_body, sizeof(page_body), "No se pudo obtener respuesta de %s: %s", url, curl_easy_strerror(res));
+            snprintf(page_body, sizeof(page_body), "No se pudo obtener respuesta de %s: %s", target_url, curl_easy_strerror(res));
         }
 
         if (chunk.data) free(chunk.data);
@@ -259,7 +281,6 @@ int main(void)
     init_screen();
     ioPadInit(7);
 
-    /* Inicializar stack de red si esta disponible */
     if (netInitialize() == 0) {
         net_initialized = 1;
     }
@@ -280,7 +301,7 @@ int main(void)
             /* Abrir teclado Sony con Triangulo */
             if (pdata.BTN_TRIANGLE && !prev_btn_triangle) {
                 char url_ingresada[512] = "";
-                if (eonsurf_abrir_teclado("Ingresar URL en EonSurf", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
+                if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
                     if (strlen(url_ingresada) > 0) {
                         navigate_to(url_ingresada);
                     }
@@ -288,22 +309,38 @@ int main(void)
             }
             prev_btn_triangle = pdata.BTN_TRIANGLE;
 
-            /* Clic con Cruz (Enter/K) en la barra de URL o marcadores */
+            /* Clic con Cruz (Enter/K) en la barra de URL, marcadores o links */
             if (pdata.BTN_CROSS && !prev_btn_cross) {
+                /* Clic en Barra de URL / Busqueda */
                 if (py >= 10 && py <= 50) {
                     char url_ingresada[512] = "";
-                    if (eonsurf_abrir_teclado("Ingresar URL en EonSurf", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
+                    if (eonsurf_abrir_teclado("Buscar o ingresar URL", current_url, url_ingresada, sizeof(url_ingresada)) == 0) {
                         if (strlen(url_ingresada) > 0) {
                             navigate_to(url_ingresada);
                         }
                     }
-                } else if (py >= 65 && py <= 115) {
+                }
+                /* Clic en Marcadores Superiores */
+                else if (py >= 65 && py <= 115) {
                     if (px >= 60 && px <= 330) {
                         navigate_to("https://es.wikipedia.org/wiki/PlayStation_3");
                     } else if (px >= 350 && px <= 620) {
-                        navigate_to("https://gemini.google.com");
+                        navigate_to("https://lite.duckduckgo.com/lite/?q=playstation+3+homebrew");
                     } else if (px >= 640 && px <= 910) {
-                        navigate_to("https://www.psx-place.com");
+                        navigate_to("https://raw.githubusercontent.com/aldostools/webMAN-MOD/master/README.md");
+                    }
+                }
+                /* Clic en Enlaces dinamicos descubiertos en la pagina */
+                else if (py >= H - 130 && py <= H - 50 && page_links_count > 0) {
+                    for (size_t k = 0; k < page_links_count && k < 6; k++) {
+                        int col = k % 3;
+                        int row = k / 3;
+                        int btn_x = 60 + col * 380;
+                        int btn_y = (H - 125) + row * 38;
+                        if (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 34) {
+                            navigate_to(page_links[k].url);
+                            break;
+                        }
                     }
                 }
             }
@@ -322,7 +359,6 @@ int main(void)
         rect(0, 0, W, 58, 0x001c2541);
         rect(0, 58, W, 2, 0x0048cae4);
 
-        /* Botones de navegacion OSD (Atras, Adelante) */
         rect_rounded(20, 14, 32, 32, 4, 0x003a506b);
         text(30, 22, 2, "<", 0x00ffffff);
 
@@ -341,32 +377,51 @@ int main(void)
         rect_rounded(W - 140, 14, 120, 32, 4, net_initialized ? 0x00065f46 : 0x00475569);
         text(W - 130, 22, 2, net_initialized ? "RED ONLINE" : "OFFLINE", 0x00ffffff);
 
-        /* 4. Panel de acceso rapido a marcadores (en la parte superior de la vista) */
+        /* 4. Marcadores Rapidos */
         rect_rounded(60, 72, 270, 38, 5, 0x001c2541);
         text(75, 84, 2, "1. Wikipedia (PS3)", 0x00ffd166);
 
         rect_rounded(350, 72, 270, 38, 5, 0x001c2541);
-        text(365, 84, 2, "2. Gemini 2.5 AI", 0x0048cae4);
+        text(365, 84, 2, "2. Buscar: PS3 Scene", 0x0048cae4);
 
         rect_rounded(640, 72, 270, 38, 5, 0x001c2541);
-        text(655, 84, 2, "3. PSX-Place Scene", 0x0006d6a0);
+        text(655, 84, 2, "3. webMAN-MOD Portal", 0x0006d6a0);
 
-        /* 5. Area de contenido web (Tarjeta visual estilo navegador moderno expandida) */
-        rect_rounded(40, 125, W - 80, H - 175, 8, 0x001c2541);
+        /* 5. Area de contenido web (Tarjeta visual estilo navegador moderno) */
+        int content_h = (page_links_count > 0) ? (H - 265) : (H - 180);
+        rect_rounded(40, 125, W - 80, content_h, 8, 0x001c2541);
         rect_rounded(40, 125, W - 80, 42, 8, 0x0024325a);
         text(60, 137, 2, page_title, 0x00ffffff);
 
-        /* Cuerpo del contenido web renderizado con ajuste de linea multilineal (Word Wrap) */
-        text_wrapped(60, 185, 2, W - 120, 24, 16, page_body, 0x0090e0ef);
+        /* Cuerpo del contenido web renderizado con ajuste de linea multilineal */
+        text_wrapped(60, 180, 2, W - 120, 22, 11, page_body, 0x0090e0ef);
 
-        /* Barra de estado inferior */
+        /* 6. Panel de Navegacion por Enlaces Clicables de la Web */
+        if (page_links_count > 0) {
+            rect_rounded(40, H - 135, W - 80, 95, 8, 0x00162032);
+            text(55, H - 130, 1, "ENLACES DISPONIBLES EN LA PAGINA (Haz clic con [X] para navegar):", 0x00ffd166);
+
+            for (size_t k = 0; k < page_links_count && k < 6; k++) {
+                int col = k % 3;
+                int row = k / 3;
+                int btn_x = 60 + col * 380;
+                int btn_y = (H - 110) + row * 34;
+
+                /* Resaltar botón si el cursor está encima */
+                int hovered = (px >= btn_x && px <= btn_x + 360 && py >= btn_y && py <= btn_y + 30);
+                rect_rounded(btn_x, btn_y, 360, 30, 4, hovered ? 0x0000b4d8 : 0x0024325a);
+                text(btn_x + 10, btn_y + 8, 2, page_links[k].text, hovered ? 0x000b132b : 0x00caf0f8);
+            }
+        }
+
+        /* 7. Barra de estado inferior */
         rect(0, H - 35, W, 35, 0x000f172a);
-        text(20, H - 24, 2, "[/_\\] Teclado Sony  |  [X] Clic / Cargar  |  [SELECT+START] Salir", 0x00cbd5e1);
+        text(20, H - 24, 2, "[/_\\] Buscar / URL  |  [X] Clic en Enlace  |  [SELECT+START] Salir", 0x00cbd5e1);
 
         snprintf(buf, sizeof(buf), "Cursor: %d, %d", px, py);
         text(W - 180, H - 24, 2, buf, 0x0038bdf8);
 
-        /* 6. Cursor en forma de flecha estilizada */
+        /* 8. Cursor en forma de flecha estilizada */
         static const uint16_t arrow_mask[16] = {
             0b1000000000000000,
             0b1100000000000000,

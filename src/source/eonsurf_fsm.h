@@ -7,13 +7,22 @@
 #include <ctype.h>
 
 #define EONSURF_MAX_DOM_NODES 3000
+#define EONSURF_MAX_LINKS 6
 
-/* Extrae texto plano continuo y limpio en tiempo O(N) descartando scripts, estilos, comentarios y tags */
-static inline size_t eonsurf_fsm_extract_text(
+typedef struct {
+    char text[48];
+    char url[256];
+    int active;
+} eon_page_link_t;
+
+/* Extrae texto plano continuo y limpio en tiempo O(N) y captura hasta EONSURF_MAX_LINKS enlaces reales */
+static inline size_t eonsurf_fsm_extract_text_and_links(
     const char *in_buf,
     size_t in_len,
     char *out_buf,
-    size_t out_max
+    size_t out_max,
+    eon_page_link_t *links_out,
+    size_t *links_count_out
 ) {
     if (!in_buf || !out_buf || out_max == 0) return 0;
 
@@ -27,6 +36,18 @@ static inline size_t eonsurf_fsm_extract_text(
     char tag_name[32] = "";
     uint8_t tag_len = 0;
     int in_tag_name = 0;
+
+    /* Detección de links <a href="...">texto</a> */
+    char cur_link_url[256] = "";
+    int capturing_link_text = 0;
+    char cur_link_text[48] = "";
+    uint8_t link_text_len = 0;
+    size_t num_links = 0;
+
+    if (links_out && links_count_out) {
+        memset(links_out, 0, sizeof(eon_page_link_t) * EONSURF_MAX_LINKS);
+        *links_count_out = 0;
+    }
 
     while (i < in_len && out_len + 1 < out_max) {
         char c = in_buf[i];
@@ -59,6 +80,27 @@ static inline size_t eonsurf_fsm_extract_text(
         /* 3. Modo texto libre (fuera de etiquetas HTML) */
         if (!in_tag) {
             if (c == '<') {
+                /* Si estábamos capturando texto de enlace y encontramos un tag de cierre </a> */
+                if (capturing_link_text && i + 3 < in_len && in_buf[i+1] == '/' && tolower((unsigned char)in_buf[i+2]) == 'a' && in_buf[i+3] == '>') {
+                    if (links_out && num_links < EONSURF_MAX_LINKS && link_text_len >= 3) {
+                        /* Guardar enlace si es significativo y no duplicado */
+                        int dup = 0;
+                        for (size_t k = 0; k < num_links; k++) {
+                            if (strcmp(links_out[k].url, cur_link_url) == 0) { dup = 1; break; }
+                        }
+                        if (!dup && strstr(cur_link_url, "Archivo:") == NULL && strstr(cur_link_url, "Special:") == NULL) {
+                            strncpy(links_out[num_links].text, cur_link_text, sizeof(links_out[num_links].text) - 1);
+                            strncpy(links_out[num_links].url, cur_link_url, sizeof(links_out[num_links].url) - 1);
+                            links_out[num_links].active = 1;
+                            num_links++;
+                        }
+                    }
+                    capturing_link_text = 0;
+                    cur_link_url[0] = '\0';
+                    cur_link_text[0] = '\0';
+                    link_text_len = 0;
+                }
+
                 /* Detectar si es un comentario <!-- */
                 if (i + 3 < in_len && in_buf[i+1] == '!' && in_buf[i+2] == '-' && in_buf[i+3] == '-') {
                     in_comment = 1;
@@ -90,6 +132,11 @@ static inline size_t eonsurf_fsm_extract_text(
                     /* Evitar acumular espacios repetidos */
                 } else if ((unsigned char)c >= 32 && (unsigned char)c <= 126) {
                     out_buf[out_len++] = c;
+                    /* Si estamos dentro de un link, acumular su texto para el botón */
+                    if (capturing_link_text && link_text_len + 1 < sizeof(cur_link_text)) {
+                        cur_link_text[link_text_len++] = c;
+                        cur_link_text[link_text_len] = '\0';
+                    }
                 }
             }
         } else {
@@ -121,6 +168,32 @@ static inline size_t eonsurf_fsm_extract_text(
                 }
             }
 
+            /* Detectar atributos href="https://..." en etiquetas <a ...> */
+            if (in_tag && strcmp(tag_name, "a") == 0 && !capturing_link_text && num_links < EONSURF_MAX_LINKS) {
+                if (i + 5 < in_len && tolower((unsigned char)in_buf[i]) == 'h' &&
+                    tolower((unsigned char)in_buf[i+1]) == 'r' &&
+                    tolower((unsigned char)in_buf[i+2]) == 'e' &&
+                    tolower((unsigned char)in_buf[i+3]) == 'f' &&
+                    in_buf[i+4] == '=') {
+                    char quote_char = in_buf[i+5];
+                    if (quote_char == '\"' || quote_char == '\'') {
+                        size_t start_url = i + 6;
+                        size_t end_url = start_url;
+                        while (end_url < in_len && in_buf[end_url] != quote_char && (end_url - start_url) < sizeof(cur_link_url) - 1) {
+                            end_url++;
+                        }
+                        size_t url_size = end_url - start_url;
+                        if (url_size > 7 && strncmp(&in_buf[start_url], "http", 4) == 0) {
+                            memcpy(cur_link_url, &in_buf[start_url], url_size);
+                            cur_link_url[url_size] = '\0';
+                            capturing_link_text = 1;
+                            link_text_len = 0;
+                            cur_link_text[0] = '\0';
+                        }
+                    }
+                }
+            }
+
             if (in_tag) {
                 if (in_quote != 0) {
                     if (c == in_quote) {
@@ -143,6 +216,7 @@ static inline size_t eonsurf_fsm_extract_text(
     }
 
     out_buf[out_len] = '\0';
+    if (links_count_out) *links_count_out = num_links;
     return out_len;
 }
 
