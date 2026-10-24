@@ -85,21 +85,23 @@ static void init_default_layout(void) {
     strncpy(g_layout.title, "PlayStation 3", sizeof(g_layout.title) - 1);
     strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
     
-    g_layout.info_row_count = 5;
-    strncpy(g_layout.info_rows[0].key, "Fabricante", sizeof(g_layout.info_rows[0].key) - 1);
-    strncpy(g_layout.info_rows[0].value, "Sony Computer Ent.", sizeof(g_layout.info_rows[0].value) - 1);
+    /* Filas iniciales dinámicas para Ficha Técnica */
+    g_info_row_count = 5;
+    strncpy(g_infobox_header, "Ficha Tecnica", sizeof(g_infobox_header) - 1);
+    strncpy(g_info_rows[0].key, "Fabricante", sizeof(g_info_rows[0].key) - 1);
+    strncpy(g_info_rows[0].val, "Sony Computer Ent.", sizeof(g_info_rows[0].val) - 1);
 
-    strncpy(g_layout.info_rows[1].key, "Lanzamiento", sizeof(g_layout.info_rows[1].key) - 1);
-    strncpy(g_layout.info_rows[1].value, "11 de nov. de 2006", sizeof(g_layout.info_rows[1].value) - 1);
+    strncpy(g_info_rows[1].key, "Lanzamiento", sizeof(g_info_rows[1].key) - 1);
+    strncpy(g_info_rows[1].val, "11 de nov. de 2006", sizeof(g_info_rows[1].val) - 1);
 
-    strncpy(g_layout.info_rows[2].key, "CPU", sizeof(g_layout.info_rows[2].key) - 1);
-    strncpy(g_layout.info_rows[2].value, "Cell Broadband Engine 3.2GHz", sizeof(g_layout.info_rows[2].value) - 1);
+    strncpy(g_info_rows[2].key, "CPU", sizeof(g_info_rows[2].key) - 1);
+    strncpy(g_info_rows[2].val, "Cell B.E. 3.2GHz", sizeof(g_info_rows[2].val) - 1);
 
-    strncpy(g_layout.info_rows[3].key, "GPU", sizeof(g_layout.info_rows[3].key) - 1);
-    strncpy(g_layout.info_rows[3].value, "RSX 'Reality Synthesizer' 500MHz", sizeof(g_layout.info_rows[3].value) - 1);
+    strncpy(g_info_rows[3].key, "GPU", sizeof(g_info_rows[3].key) - 1);
+    strncpy(g_info_rows[3].val, "RSX 500MHz VRAM", sizeof(g_info_rows[3].val) - 1);
 
-    strncpy(g_layout.info_rows[4].key, "Ventas", sizeof(g_layout.info_rows[4].key) - 1);
-    strncpy(g_layout.info_rows[4].value, "87.4 millones de unidades", sizeof(g_layout.info_rows[4].value) - 1);
+    strncpy(g_info_rows[4].key, "Ventas", sizeof(g_info_rows[4].key) - 1);
+    strncpy(g_info_rows[4].val, "87.4M unidades", sizeof(g_info_rows[4].val) - 1);
 
     /* Generar textura de 120x80 para la miniatura fotográfica de la consola */
     g_layout.img_w = 120;
@@ -251,6 +253,8 @@ static void draw_text_clipped(int x, int y, int s, const char *text, u32 c, int 
     }
 }
 
+#include "eonsurf_dynamic_web.h"
+
 static int text_wrapped_hd(int start_x, int start_y, int scale, int max_width, int line_spacing, int clip_top, int clip_bottom, int scroll_offset, const char *t, u32 default_color)
 {
     int cur_x = start_x;
@@ -370,19 +374,7 @@ static void navigate_to(const char *input_url)
 {
     char target_url[512] = "";
 
-    if (strncmp(input_url, "http://", 7) != 0 && strncmp(input_url, "https://", 8) != 0) {
-        char query_escaped[384] = "";
-        size_t qidx = 0;
-        for (size_t k = 0; input_url[k] != '\0' && qidx + 2 < sizeof(query_escaped); k++) {
-            if (input_url[k] == ' ') query_escaped[qidx++] = '+';
-            else query_escaped[qidx++] = input_url[k];
-        }
-        query_escaped[qidx] = '\0';
-        snprintf(target_url, sizeof(target_url), "https://lite.duckduckgo.com/lite/?q=%s", query_escaped);
-    } else {
-        strncpy(target_url, input_url, sizeof(target_url) - 1);
-        target_url[sizeof(target_url) - 1] = '\0';
-    }
+    eonsurf_build_search_url(input_url, target_url, sizeof(target_url));
 
     strncpy(current_url, target_url, sizeof(current_url) - 1);
     current_url[sizeof(current_url) - 1] = '\0';
@@ -420,38 +412,42 @@ static void navigate_to(const char *input_url)
             snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, target_url);
 
             char raw_extracted[7800] = "";
-            eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, raw_extracted, sizeof(raw_extracted), page_links, &page_links_count);
+            int parsed_ok = 0;
 
-            if (strlen(raw_extracted) > 0) {
-                /* Formatear Markdown limpio inyectando saltos en ## y marcas de enlace */
-                eonsurf_format_markdown_and_links(raw_extracted, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
-                
-                /* Extraer la primera imagen de la página y descargarla para el Infobox */
-                char detected_img_url[256] = "";
-                if (eonsurf_find_first_image_url(chunk.data, detected_img_url, sizeof(detected_img_url))) {
-                    /* Descargar con timeout corto y convertir a ARGB nativo */
-                    if (eonsurf_fetch_and_decode_infobox_image(detected_img_url)) {
-                        /* Sincronizar textura con el layout */
-                        g_layout.infobox_rgba_tex = g_infobox_tex;
-                        g_layout.img_w = g_infobox_w;
-                        g_layout.img_h = g_infobox_h;
-                    }
+            /* Si es una pagina de resultados de DuckDuckGo Lite, extraer snippets y titulos a Markdown */
+            if (strstr(target_url, "duckduckgo.com")) {
+                char search_md[7800] = "";
+                if (eonsurf_parse_duckduckgo_results(chunk.data, search_md, sizeof(search_md))) {
+                    eonsurf_format_markdown_and_links(search_md, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    parsed_ok = 1;
                 }
-            } else {
-                snprintf(page_body, sizeof(page_body), "Página recibida (Tamaño: %u bytes).", (unsigned int)chunk.size);
             }
 
-            /* Actualizar título del documento en la Infobox 70/30 */
-            if (strstr(target_url, "PlayStation_3") || strstr(target_url, "playstation")) {
-                strncpy(g_layout.title, "PlayStation 3", sizeof(g_layout.title) - 1);
-                strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
-            } else if (strstr(target_url, "duckduckgo")) {
-                strncpy(g_layout.title, "DuckDuckGo Search", sizeof(g_layout.title) - 1);
-                strncpy(g_layout.subtitle, "Resultados web en vivo", sizeof(g_layout.subtitle) - 1);
-            } else {
-                strncpy(g_layout.title, "Web Document", sizeof(g_layout.title) - 1);
-                strncpy(g_layout.subtitle, target_url, sizeof(g_layout.subtitle) - 1);
+            if (!parsed_ok) {
+                eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, raw_extracted, sizeof(raw_extracted), page_links, &page_links_count);
+                if (strlen(raw_extracted) > 0) {
+                    eonsurf_format_markdown_and_links(raw_extracted, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                } else {
+                    snprintf(page_body, sizeof(page_body), "Pagina recibida (%u bytes).", (unsigned int)chunk.size);
+                }
             }
+
+            /* Extraer primera imagen de la pagina para el Infobox */
+            char detected_img_url[256] = "";
+            if (eonsurf_find_first_image_url(chunk.data, detected_img_url, sizeof(detected_img_url))) {
+                if (eonsurf_fetch_and_decode_infobox_image(detected_img_url)) {
+                    g_layout.infobox_rgba_tex = g_infobox_tex;
+                    g_layout.img_w = g_infobox_w;
+                    g_layout.img_h = g_infobox_h;
+                }
+            }
+
+            /* Actualizar Infobox 100% dinamico en tiempo real (Wikipedia o Telemetria Red) */
+            eonsurf_update_dynamic_infobox(target_url, chunk.data, chunk.size, (int)response_code, g_link_count);
+            if (strlen(g_infobox_header) > 0) {
+                strncpy(g_layout.title, g_infobox_header, sizeof(g_layout.title) - 1);
+            }
+            strncpy(g_layout.subtitle, target_url, sizeof(g_layout.subtitle) - 1);
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
             snprintf(page_body, sizeof(page_body), "No se pudo obtener respuesta de %s: %s", target_url, curl_easy_strerror(res));
@@ -670,16 +666,8 @@ int main(void)
         int table_start_y = img_box_y + img_box_h + 32;
         rect(col_right_x + 14, table_start_y - 4, col_right_w - 28, 1, 0x00cbd5e1);
 
-        for (uint32_t r = 0; r < g_layout.info_row_count; r++) {
-            int row_y = table_start_y + (r * 26);
-            if (row_y + 24 > canvas_y + canvas_h) break;
-
-            if (r % 2 == 1) {
-                rect(col_right_x + 14, row_y - 2, col_right_w - 28, 24, 0x00f8fafc);
-            }
-            text_hd(col_right_x + 18, row_y + 3, 1, g_layout.info_rows[r].key, 0x000f172a);
-            draw_text_clipped(col_right_x + 115, row_y + 3, 1, g_layout.info_rows[r].value, 0x002563eb, col_right_x + col_right_w - 16);
-        }
+        /* Filas 100% dinamicas: Ficha Wikipedia o Telemetria HTTP Real */
+        eonsurf_draw_dynamic_infobox_rows(col_right_x, table_start_y, col_right_w, canvas_y, canvas_h);
 
         /* 5. Panel de Enlaces Hipertextuales */
         if (page_links_count > 0) {
