@@ -18,31 +18,23 @@ cp port/ps3/surface_ps3.c "$WORK_DIR/netsurf-all-3.11/libnsfb/src/surface/ps3.c"
 cp port/ps3/osk_ps3.c "$WORK_DIR/netsurf-all-3.11/netsurf/frontends/framebuffer/osk_ps3.c"
 cp port/ps3/Makefile.config "$WORK_DIR/netsurf-all-3.11/netsurf/Makefile.config"
 
-echo "==> 3. Compilando librerías y navegador NetSurf para PS3..."
-cd "$WORK_DIR/netsurf-all-3.11"
-make TARGET=framebuffer HOST=$HOST PREFIX=$PREFIX CC=powerpc64-ps3-elf-gcc CXX=powerpc64-ps3-elf-g++ AR=powerpc64-ps3-elf-ar Q= -j"$(nproc)" || true
-
-echo "==> 4. Generando binario EonSurf para PS3..."
-cd "$WORK_DIR/../.."
+echo "==> 3. Generando binario EonSurf para PS3..."
 mkdir -p build-eonsurf/pkg
 cp hola/pkg/ICON0.PNG build-eonsurf/pkg/
 cp hola/pkg/sfo.xml build-eonsurf/pkg/
 
-# Si nsfb compiló, enlazar como EBOOT de PS3; si no, enlazar el runner nativo con los módulos
-if [ -f "$WORK_DIR/netsurf-all-3.11/netsurf/nsfb" ]; then
-    echo "NetSurf nsfb compilado con éxito. Creando ELF y SELF..."
-    cp "$WORK_DIR/netsurf-all-3.11/netsurf/nsfb" build-eonsurf/EonSurf.elf
-else
-    echo "Enlazando EonSurf con driver RSX nativo y módulos..."
-    powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
-        port/ps3/surface_ps3.c port/ps3/osk_ps3.c hola/source/main.c \
-        -Ihola/source -Iport/ps3 -I/usr/local/ps3dev/portlibs/ppu/include -I/usr/local/ps3dev/include \
-        -L/usr/local/ps3dev/portlibs/ppu/lib -L/usr/local/ps3dev/lib \
-        -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lrt -llv2 -lm \
-        -o build-eonsurf/EonSurf.elf
-fi
+# Rutas exactas de includes y librerías de PSL1GHT
+INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include"
+LIB_FLAGS="-L$PSL1GHT/lib -L$PSL1GHT/ppu/lib -L$PREFIX/lib"
 
-echo "==> 5. Firmando ejecutable y generando EonSurf.pkg..."
+echo "Enlazando EonSurf con driver RSX nativo y módulos..."
+powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
+    port/ps3/surface_ps3.c port/ps3/osk_ps3.c hola/source/main.c \
+    $INC_FLAGS $LIB_FLAGS \
+    -lrsx -lgcm_sys -lio -lsysutil -lnet -lmbedtls -lcurl -lrt -llv2 -lm \
+    -o build-eonsurf/EonSurf.elf
+
+echo "==> 4. Firmando ejecutable y generando EonSurf-Navegador.pkg..."
 make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
 make_self_npdrm build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN UP0001-EONSURF01_00-0000000000000000 || true
 sfo -f build-eonsurf/pkg/sfo.xml build-eonsurf/PARAM.SFO
@@ -55,4 +47,4 @@ cp build-eonsurf/pkg/ICON0.PNG build-eonsurf/pkg_dir/
 pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || \
 package_finalize build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || true
 
-echo "==> Proceso de compilación de EonSurf finalizado."
+echo "==> Proceso de compilación de EonSurf finalizado con éxito."
