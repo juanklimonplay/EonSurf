@@ -50,9 +50,19 @@ powerpc64-ps3-elf-gcc -O2 -mcpu=cell -DNSFB_PS3_AVAILABLE \
     -o build-eonsurf/EonSurf.elf
 
 echo "==> 4. Firmando ejecutable y generando EonSurf-Navegador.pkg..."
-make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
-make_self_npdrm build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN UP0001-EONSURF01_00-0000000000000000 || true
-sfo -f build-eonsurf/pkg/sfo.xml build-eonsurf/PARAM.SFO
+if command -v make_self_npdrm >/dev/null 2>&1; then
+    make_self_npdrm build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN UP0001-EONSURF01_00-0000000000000000 || \
+    make_self build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN || \
+    fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+elif command -v make_self >/dev/null 2>&1; then
+    make_self build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+elif command -v fself >/dev/null 2>&1; then
+    fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+else
+    cp build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN
+fi
+
+sfo --title "EonSurf" --appid "EONSURF01" -f build-eonsurf/pkg/sfo.xml build-eonsurf/PARAM.SFO
 
 mkdir -p build-eonsurf/pkg_dir/USRDIR
 mkdir -p build-eonsurf/pkg_dir/USRDIR/startpage
@@ -64,7 +74,15 @@ cp repo/pkg/eonsurf.cfg build-eonsurf/pkg_dir/USRDIR/ 2>/dev/null || true
 cp repo/pkg/lang_*.json build-eonsurf/pkg_dir/USRDIR/ 2>/dev/null || true
 cp repo/startpage/index.html build-eonsurf/pkg_dir/USRDIR/startpage/ 2>/dev/null || true
 
-pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || \
-package_finalize build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg || true
+if command -v pkg >/dev/null 2>&1; then
+    pkg --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg
+    if command -v package_finalize >/dev/null 2>&1; then
+        package_finalize EonSurf-Navegador.pkg || true
+    fi
+elif command -v pkg.py >/dev/null 2>&1; then
+    pkg.py --contentid UP0001-EONSURF01_00-0000000000000000 build-eonsurf/pkg_dir/ EonSurf-Navegador.pkg
+else
+    echo "Aviso: herramienta pkg no disponible"
+fi
 
 echo "==> Proceso de compilación de EonSurf finalizado con éxito."
