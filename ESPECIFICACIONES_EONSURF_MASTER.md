@@ -612,3 +612,21 @@ Para culminar la especificación más completa y robusta de la historia del homebr
        \gcmSetFlip(ctx, cur); rsxFlushBuffer(ctx); gcmSetWaitFlip(ctx); sysUtilCheckCallback();\
   3. **Cierre Fluido en Callback:** Al presionar START en el teclado de Sony, el callback captura \SYSUTIL_OSK_DONE\, extrae el texto UTF-16 convirtiéndolo a UTF-8 para NetSurf con \oskUnloadAsync()\, y al recibir \SYSUTIL_OSK_UNLOADED\ destruye el contenedor de memoria y restaura \g_osk_state = OSK_STATE_CLOSED\.
   - **Resultado:** El teclado de Sony se desliza en 0.1 segundos a 60 FPS con suavidad de juego triple A sobre la interfaz de EonSurf.
+
+
+---
+
+**Created by JuAnKLiMoNN**
+
+## 25. Los 10 Mandamientos Finales del Silicio (Arquitectura Extrema Cell & RSX)
+
+1. **Hilos de Hardware PPU (SMT 0 vs 1) & Registros HMT:** Prioridades pareadas (1000 y 1001) + control por silicio con `asm volatile("or 1,1,1")` y `"or 2,2,2"`.
+2. **Compresion HTTP en SPUs:** Inflate (zlib/miniz) en SPU junto a TLS 1.3, cabecera `Accept-Encoding: gzip, deflate` y Brotli prohibido.
+3. **230 MB Libres de VRAM:** Texture Pool en GDDR3 y Snapshots de Paginas con `gcmSetTransferImage(LOCAL_TO_LOCAL)` para boton Atras en 0.2 ms.
+4. **SIMD AltiVec / VMX (128-bit) en PPU:** `-maltivec -mabi=altivec`, `vec_lvsl`, jvec_perm` y `vec_mladd` para 4 pixeles RGBA por ciclo.
+5. **Memoria Extra sin romper Lv1:** Prestamo oficial de VSH con `sysMemContainerCreate(&container, 16mb)` mientras el OSK este cerrado.
+6. **Prefetching Manual L1/L2 (dcbt) especifico para nucleo In-Order:** `__builtin_prefetch(node->next->next, 0, 3)` y `dcbtst` de 256 bytes en blitting.
+7. **Triple Buffering Asincrono RSX:** Etiquetas de hardware con `gcmGetLabelAddress(64)` y `gcmSetWriteBackEndLabel` sin `sys_spu_flip_status` bloqueante.
+8. **Audio Opus en SPU:** Decodificador libopus compilado con `-DFIXED_POINT=1` (75 KB de codigo) sin SPU Overlays.
+9. **USB NTFS / exFAT > 4GB:** Enlace de `libntfs_ext.a` con 128 paginas de cache en RAM y desmontaje seguro antes de salir.
+10. **Corte Termico de Emergencia (>83Â°C):** Buzzer (Syscall 392) + SysFsSync + Apagado limpio por Syscon con Syscall 379 (0x1100).
