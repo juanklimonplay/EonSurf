@@ -7,14 +7,9 @@
 #include <stdint.h>
 #include <curl/curl.h>
 
-#define MAX_PAGE_LINKS 128
+#include "eonsurf_md_clean.h"
 
-typedef struct {
-    char label[128];
-    char url[256];
-    int16_t x, y, w, h;       /* Coordenadas calculadas al dibujar en pantalla */
-    uint8_t visible;          /* 1 si está dentro del área visible actual */
-} EonCleanLink;
+#define MAX_PAGE_LINKS 128
 
 /* Estado global de enlaces e imagen de la pestaña activa */
 static EonCleanLink g_links[MAX_PAGE_LINKS];
@@ -117,6 +112,72 @@ static inline int eonsurf_find_first_image_url(const char *raw_source, char *out
         }
     }
     return 0;
+}
+
+/* Descarga la imagen con libcurl y la decodifica a ARGB Big-Endian para el RSX */
+static inline int eonsurf_fetch_and_decode_infobox_image(const char *img_url) {
+    if (g_infobox_tex) {
+        free(g_infobox_tex);
+        g_infobox_tex = NULL;
+        g_infobox_w = 0;
+        g_infobox_h = 0;
+    }
+
+    EonImgBuffer buf;
+    buf.cap = 2 * 1024 * 1024;
+    buf.size = 0;
+    buf.data = (uint8_t *)malloc(buf.cap);
+    if (!buf.data) return 0;
+
+    CURL *curl = curl_easy_init();
+    if (!curl) { free(buf.data); return 0; }
+
+    curl_easy_setopt(curl, CURLOPT_URL, img_url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, img_curl_write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buf);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 6L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK || buf.size < 64) {
+        free(buf.data);
+        return 0;
+    }
+
+    int w = 0, h = 0, ch = 0;
+    uint8_t *raw_rgba = stbi_load_from_memory(buf.data, (int)buf.size, &w, &h, &ch, 4);
+    free(buf.data);
+
+    if (!raw_rgba || w <= 0 || h <= 0) {
+        if (raw_rgba) stbi_image_free(raw_rgba);
+        return 0;
+    }
+
+    g_infobox_tex = (uint32_t *)malloc(w * h * sizeof(uint32_t));
+    if (g_infobox_tex) {
+        for (int i = 0; i < w * h; i++) {
+            uint8_t r = raw_rgba[i * 4 + 0];
+            uint8_t g = raw_rgba[i * 4 + 1];
+            uint8_t b = raw_rgba[i * 4 + 2];
+            uint8_t a = raw_rgba[i * 4 + 3];
+            if (a < 255) {
+                r = (r * a + 0x20 * (255 - a)) >> 8;
+                g = (g * a + 0x26 * (255 - a)) >> 8;
+                b = (b * a + 0x2E * (255 - a)) >> 8;
+            }
+            g_infobox_tex[i] = 0xFF000000 | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+        }
+        g_infobox_w = w;
+        g_infobox_h = h;
+    }
+
+    stbi_image_free(raw_rgba);
+    return (g_infobox_tex != NULL);
 }
 
 #endif /* EONSURF_INTERACTIVE_MEDIA_H */
