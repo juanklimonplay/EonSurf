@@ -16,15 +16,13 @@ bash port/fetch.sh "$WORK_DIR"
 echo "==> 2. Instalando driver PS3 en libnsfb y frontends..."
 cp port/ps3/surface_ps3.c "$WORK_DIR/netsurf-all-3.11/libnsfb/src/surface/ps3.c"
 cp port/ps3/osk_ps3.c "$WORK_DIR/netsurf-all-3.11/netsurf/frontends/framebuffer/osk_ps3.c"
-cp port/ps3/Makefile.config "$WORK_DIR/netsurf-all-3.11/netsurf/Makefile.config"
 
 echo "==> 3. Generando binario EonSurf para PS3..."
 mkdir -p build-eonsurf/pkg
 cp hola/pkg/ICON0.PNG build-eonsurf/pkg/
 cp hola/pkg/sfo.xml build-eonsurf/pkg/
 
-# Rutas exactas de includes y librerías de PSL1GHT
-INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include"
+INC_FLAGS="-Ihola/source -Iport/ps3 -I$PSL1GHT/include -I$PSL1GHT/ppu/include -I$PREFIX/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/include -I$WORK_DIR/netsurf-all-3.11/libnsfb/src"
 LIB_FLAGS="-L$PSL1GHT/lib -L$PSL1GHT/ppu/lib -L$PREFIX/lib"
 
 echo "Enlazando EonSurf con driver RSX nativo y módulos..."
