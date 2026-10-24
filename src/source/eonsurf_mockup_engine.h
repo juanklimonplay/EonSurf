@@ -7,7 +7,7 @@
 #include <string.h>
 #include <math.h>
 
-#include "stb_truetype.h"
+/* stb_truetype.h already included by main.c */
 #include "eonsurf_interactive_media.h"
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_modern_ui.h"
