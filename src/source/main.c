@@ -69,8 +69,10 @@ static void init_screen(void)
 
 static void flip(void)
 {
-    if (!first) { while (gcmGetFlipStatus() != 0) usleep(200); }
-    gcmResetFlipStatus();
+    if (!first) {
+        while (gcmGetFlipStatus() != 0) usleep(200);
+        gcmResetFlipStatus();
+    }
     gcmSetFlip(ctx, cur);
     rsxFlushBuffer(ctx);
     gcmSetWaitFlip(ctx);
@@ -145,12 +147,6 @@ int main(void)
     /* Inicializar stack de red si esta disponible */
     if (netInitialize() == 0) {
         net_initialized = 1;
-    }
-
-    /* Inicializar superficie RAM de NetSurf */
-    nsfb = nsfb_new(NSFB_SURFACE_RAM);
-    if (nsfb != NULL) {
-        nsfb_init(nsfb);
     }
 
     while (running) {
