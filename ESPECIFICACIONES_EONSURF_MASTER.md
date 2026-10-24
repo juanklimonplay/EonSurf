@@ -422,3 +422,33 @@ Para garantizar estabilidad absoluta de nivel comercial y prevenir cuellos de bo
 * **Causa:** Un binario ELF compilado directamente con \powerpc64-ps3-elf-gcc\ contiene stubs sin resolver (\ x00000000\) para las librerías dinámicas del sistema de Sony (\sysutil\, \sx\, \
 et\, \io\). Al ejecutarse en RPCS3 o consola real, cualquier llamada provoca un salto a memoria no mapeada con error: *\VM: Access violation executing location 0x7c0802a4 / Unknown opcode: 0x00000000\*.
 * **Solución Obligatoria:** Ejecutar siempre **\sprxlinker EonSurf.elf\** inmediatamente después de la compilación de GCC y antes de la firma con \make_fself\. \sprxlinker\ parchea los stubs del ELF vinculándolos con la tabla OPD real del sistema operativo PS3.
+
+### 8. Detalles Quirúrgicos de Implementación en Código C (PSL1GHT & Lv2)
+
+1. **Prioridad del Hilo de Escritura SATA (\sysThreadCreate\):**
+   - En el kernel Lv2 de PS3, un número de prioridad menor significa mayor prioridad de CPU (0 es la máxima, 3071 la mínima).
+   - El hilo principal corre en prioridad estándar (\1001\).
+   - El hilo de volcado a disco para descargas de \.pkg\ se instancia con **prioridad \1500\ o \2000\**. De este modo, el planificador del Cell jamás roba ciclos al bucle de renderizado ni pierde un solo VSync del RSX (garantizando los 60 FPS inquebrantables).
+
+2. **Apertura de Fuentes en \/dev_flash\ con Flag Estricto \SYS_O_RDONLY\:**
+   - La fuente \/dev_flash/data/font/SCE-PS3-VR-R-LATIN.TTF\ se debe abrir estrictamente en modo solo lectura (\SYS_O_RDONLY\).
+   - Solicitar permisos de escritura sobre \/dev_flash\ dispara la protección del hipervisor de Sony en CFW Evilnat o PS3HEN, provocando un fallo de descriptor (\EBADF\ o \EACCES\).
+
+3. **Búsqueda Binaria (\search\) sobre la Tabla FNV-1a de 120 KB:**
+   - Al compilar la tabla estática binaria de 15.000 dominios, los hashes \uint64_t\ se guardan estrictamente ordenados de menor a mayor.
+   - La evaluación en tiempo de ejecución en la PPU utiliza la función estándar \search()\.
+   - Se determina si un dominio es publicitario en un máximo de **14 operaciones de comparación** (\$\log_2(15000) \approx 13.8\$), operando directamente dentro de los 512 KB de la caché L2 de la PPU sin tocar la RAM.
+
+---
+
+## 21. Matriz de Ingeniería Definitiva de EonSurf
+
+| Módulo / Subsistema | Parámetro / Constante de Bajo Nivel | Mecanismo en PSL1GHT / C | Garantía en Consola Física PS3 |
+| :--- | :--- | :--- | :--- |
+| **Stack de Red (\sys_net\)** | \max_fetchers: 8\ / \per_host: 4\ / \SO_RCVBUF: 256KB\ | Reutilización \CURLOPT_SSL_SESSIONID_CACHE = 1L\ | Descargas a tope de línea sin agotar sockets del kernel Lv2. |
+| **Memoria DOM/CSS** | Pool estático XDR de **64 MB** | Asignador **TLSF** (\(1)\$) + \rena_destroy()\ por pestaña | Cero fragmentación de memoria en sesiones de uso prolongadas. |
+| **I/O Disco Duro (SATA I)** | Buffer RAM de **2 MB** + Extensión \.part\ | \sysFsFtruncate()\ + \sysFsWrite()\ en hilo secundario (Prioridad ~1500) | Descargas limpias a \/dev_hdd0/packages\ sin tirones en los 60 FPS. |
+| **Motor Tipográfico** | \/dev_flash/.../SCE-PS3-VR-R-LATIN.TTF\ (\SYS_O_RDONLY\) | FreeType2 + **Atlas de Glifos** pre-rasterizados en RAM XDR | Texto 1080p con anti-aliasing sin recalcular curvas en el scroll. |
+| **AdBlocker Nativo** | Tabla binaria ordenada de **120 KB** | Hash **FNV-1a (64-bit)** + \search()\ pre-DNS (\(\log N)\$) | Bloqueo instantáneo en caché L2 con 0% de impacto en CPU. |
+| **Ciclo de Vida XMB** | \SYSUTIL_EXIT_GAME\ + \USRDIR/certs/cacert.pem\ | Cierre ordenado de SPUs/descriptores + Certificados por FTP | Cero triple pitido al salir al XMB y soporte HTTPS a futuro. |
+| **Bus EIB y MFC (SPUs)** | \__attribute__((aligned(128)))\ | Cola circular FIFO + Hardware Mailboxes (\spu_readch\) | Transferencias DMA a velocidad de ráfaga sin bus errors. |
