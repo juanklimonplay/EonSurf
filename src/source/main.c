@@ -38,6 +38,7 @@
 #include "eonsurf_net_bypass.h"
 #include "eonsurf_ps3_ergonomics.h"
 #include "eonsurf_bookmarks.h"
+#include "eonsurf_silicon.h"
 #include "eonsurf_net_progress.h"
 #include "eonsurf_spatial_nav.h"
 #include "eonsurf_file_explorer.h"
