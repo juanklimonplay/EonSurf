@@ -575,11 +575,17 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         int thumb_h = (380 * scrollbar_track_h) / (total_doc_h > 0 ? total_doc_h : 1);
         if (thumb_h < 24) thumb_h = 24;
         int thumb_y = scrollbar_y + (scroll_y * (scrollbar_track_h - thumb_h)) / max_s;
+        /* Pista de scroll */
         for (int sy = scrollbar_y; sy < scrollbar_y + scrollbar_track_h; sy++) {
-            mk_blend(fb, pitch, content_max_x + 12, sy, 0x1E2E40, 100);
+            for (int sx = 0; sx < 10; sx++) {
+                mk_blend(fb, pitch, content_max_x + 8 + sx, sy, 0x1E2E40, 140);
+            }
         }
+        /* Deslizador (Thumb) Nen interactivo */
         for (int ty = thumb_y; ty < thumb_y + thumb_h; ty++) {
-            mk_blend(fb, pitch, content_max_x + 12, ty, 0x38BDF8, 220);
+            for (int tx = 0; tx < 10; tx++) {
+                mk_blend(fb, pitch, content_max_x + 8 + tx, ty, 0x38BDF8, 240);
+            }
         }
     }
 

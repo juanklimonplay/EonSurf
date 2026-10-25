@@ -122,10 +122,12 @@ static inline int eonsurf_osk_open(const char *prompt_title, const char *initial
     g_osk_param.firstViewPanel = OSK_PANEL_TYPE_URL;
     g_osk_param.controlPoint.x = 0.0f;
     g_osk_param.controlPoint.y = 0.0f;
-    g_osk_param.prohibitFlags  = OSK_PROHIBIT_RETURN;
+    g_osk_param.prohibitFlags  = 0; /* Permitir ENTER / RETURN para enviar navegacion */
 
     oskSetKeyLayoutOption(OSK_10KEY_PANEL | OSK_FULLKEY_PANEL);
-    oskSetInitialInputDevice(OSK_DEVICE_PAD);
+    /* Permitir entrada directa tanto de mando DualShock 3 como de teclado fisico USB / PC */
+    oskSetKeyLayoutOption(OSK_10KEY_PANEL | OSK_FULLKEY_PANEL);
+    oskSetInitialInputDevice(OSK_DEVICE_KEYBOARD);
 
     if (oskLoadAsync(g_osk_container, &g_osk_param, &g_osk_field) == 0) {
         g_osk_state = EON_OSK_ACTIVE;

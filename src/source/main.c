@@ -666,15 +666,28 @@ int main(void)
             else if (mode == CURSOR_IBEAM_URL) g_cursor_dynamic_mode = CURSOR_MODE_IBEAM_TEXT;
             else g_cursor_dynamic_mode = CURSOR_MODE_NORMAL;
 
-            /* Scroll vertical: Stick Derecho (R3) + Fallback teclado PC / L1 / R1 */
+            /* Scroll vertical: Stick Derecho + R1/L1 + Gatillos R2/L2 + D-Pad Arriba/Abajo */
             int ry = pdata.ANA_R_V - 128;
             if (abs(ry) > 16) {
-                scroll_y += ry / 6;
+                scroll_y += ry / 5;
             }
-            if (pdata.BTN_L1) scroll_y -= 12;
-            if (pdata.BTN_R1) scroll_y += 12;
-            if (pdata.BTN_L2) scroll_y -= 20;
-            if (pdata.BTN_R2) scroll_y += 20;
+            if (pdata.BTN_L1) scroll_y -= 16;
+            if (pdata.BTN_R1) scroll_y += 16;
+            if (pdata.BTN_L2) scroll_y -= 28;
+            if (pdata.BTN_R2) scroll_y += 28;
+            /* Scroll con Cruceta / Flechas de PC */
+            if (pdata.BTN_UP) scroll_y -= 14;
+            if (pdata.BTN_DOWN) scroll_y += 14;
+
+            /* Arrastre de barra de scroll con raton / Cruz [X] sostenida sobre la pista */
+            int track_x = g_sidebar_visible ? (865 + 8) : (1220 + 8);
+            if (pdata.BTN_CROSS && px >= track_x - 14 && px <= track_x + 24 && py >= 220 && py <= 590 && max_scroll_y > 0) {
+                float click_ratio = (float)(py - 235) / 345.0f;
+                if (click_ratio < 0.0f) click_ratio = 0.0f;
+                if (click_ratio > 1.0f) click_ratio = 1.0f;
+                scroll_y = (int)(click_ratio * (float)max_scroll_y);
+            }
+
             if (scroll_y < 0) scroll_y = 0;
             if (scroll_y > max_scroll_y) scroll_y = max_scroll_y;
 
@@ -798,7 +811,15 @@ int main(void)
                     /* Clic con cursor en '↻' (Reload) */
                     navigate_to(current_url);
                 }
-                /* B. Clic sobre enlace en el texto */
+                /* B. Clic en pista de barra de scroll */
+                int track_cx = g_sidebar_visible ? (865 + 8) : (1220 + 8);
+                if (px >= track_cx - 14 && px <= track_cx + 24 && py >= 220 && py <= 590 && max_scroll_y > 0) {
+                    float click_ratio = (float)(py - 235) / 345.0f;
+                    if (click_ratio < 0.0f) click_ratio = 0.0f;
+                    if (click_ratio > 1.0f) click_ratio = 1.0f;
+                    scroll_y = (int)(click_ratio * (float)max_scroll_y);
+                }
+                /* C. Clic sobre enlace en el texto */
                 else {
                     const char *clicked_link = eonsurf_check_link_click(px, py);
                     if (clicked_link) {

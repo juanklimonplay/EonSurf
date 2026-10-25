@@ -84,12 +84,14 @@ static size_t img_curl_write_cb(void *contents, size_t size, size_t nmemb, void 
 
 /* Busca la primera URL de imagen (.png o .jpg) en el HTML o Markdown */
 static inline int eonsurf_find_first_image_url(const char *raw_source, char *out_img_url, size_t max_len) {
+    if (!raw_source || !out_img_url || max_len < 32) return 0;
+
     /* 1. Soporte para miniaturas de Wikimedia (//thumb.wikimedia.org/ o //upload.wikimedia.org/) */
     const char *wiki_img = strstr(raw_source, "//thumb.wikimedia.org/");
     if (!wiki_img) wiki_img = strstr(raw_source, "//upload.wikimedia.org/");
     if (wiki_img) {
         const char *end = wiki_img;
-        while (*end && *end != '"' && *end != '\'' && *end != ' ' && *end != '>' && *end != '?') end++;
+        while (*end && *end != '"' && *end != '\'' && *end != ' ' && *end != '>') end++;
         size_t len = (size_t)(end - wiki_img);
         if (len > 10 && len + 8 < max_len) {
             snprintf(out_img_url, max_len, "https:%.*s", (int)len, wiki_img);
@@ -97,24 +99,72 @@ static inline int eonsurf_find_first_image_url(const char *raw_source, char *out
         }
     }
 
+    /* 2. Soporte para etiquetas estándar <img ... src="..."> */
+    const char *img_tag = raw_source;
+    while ((img_tag = strstr(img_tag, "<img")) != NULL || (img_tag = strstr(img_tag, "<IMG")) != NULL) {
+        const char *tag_end = strchr(img_tag, '>');
+        if (!tag_end) break;
+        const char *src_attr = strstr(img_tag, "src=\"");
+        char quote = '"';
+        if (!src_attr || src_attr > tag_end) {
+            src_attr = strstr(img_tag, "src='");
+            quote = '\'';
+        }
+        if (src_attr && src_attr < tag_end) {
+            const char *val_start = src_attr + 5;
+            const char *val_end = strchr(val_start, quote);
+            if (val_end && val_end <= tag_end) {
+                size_t vlen = (size_t)(val_end - val_start);
+                if (vlen > 8 && vlen + 16 < max_len) {
+                    if (val_start[0] == '/' && val_start[1] == '/') {
+                        snprintf(out_img_url, max_len, "https:%.*s", (int)vlen, val_start);
+                    } else if (strncmp(val_start, "http", 4) == 0) {
+                        snprintf(out_img_url, max_len, "%.*s", (int)vlen, val_start);
+                    } else {
+                        img_tag = tag_end;
+                        continue;
+                    }
+                    /* Descartar iconos diminutos de 1px o trackers */
+                    if (strstr(out_img_url, "1px") == NULL && strstr(out_img_url, "tracking") == NULL) {
+                        return 1;
+                    }
+                }
+            }
+        }
+        img_tag = tag_end;
+    }
+
+    /* 3. Escaneo libre de URLs https con extensiones de imagen */
     const char *p = raw_source;
     while ((p = strstr(p, "https://")) != NULL) {
         const char *end = p;
-        while (*end && *end != '"' && *end != '\'' && *end != ')' && *end != ' ' && *end != '\n' && *end != '>' && *end != '?') {
+        while (*end && *end != '"' && *end != '\'' && *end != ')' && *end != ' ' && *end != '\n' && *end != '>') {
             end++;
         }
         size_t len = (size_t)(end - p);
         if (len > 12 && len < max_len) {
-            if (strncmp(end - 4, ".png", 4) == 0 || strncmp(end - 4, ".jpg", 4) == 0 || strncmp(end - 5, ".jpeg", 5) == 0) {
-                memcpy(out_img_url, p, len);
-                out_img_url[len] = '\0';
-                return 1;
+            char temp_url[512] = "";
+            size_t clen = len < sizeof(temp_url) - 1 ? len : sizeof(temp_url) - 1;
+            memcpy(temp_url, p, clen);
+            temp_url[clen] = '\0';
+            char *q = strchr(temp_url, '?');
+            if (q) *q = '\0'; /* Omitir query params para chequear extensión */
+            size_t tlen = strlen(temp_url);
+            if (tlen > 4) {
+                if (strcasecmp(temp_url + tlen - 4, ".png") == 0 ||
+                    strcasecmp(temp_url + tlen - 4, ".jpg") == 0 ||
+                    strcasecmp(temp_url + tlen - 5, ".jpeg") == 0) {
+                    strncpy(out_img_url, p, len < max_len - 1 ? len : max_len - 1);
+                    out_img_url[len < max_len - 1 ? len : max_len - 1] = '\0';
+                    return 1;
+                }
             }
         }
         p = end;
     }
     return 0;
 }
+
 
 /* Descarga la imagen con libcurl y la decodifica a ARGB Big-Endian para el RSX */
 static inline int eonsurf_fetch_and_decode_infobox_image(const char *img_url) {
