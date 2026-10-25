@@ -32,6 +32,11 @@
 #include "eonsurf_history.h"
 #include "eonsurf_downloader.h"
 #include "eonsurf_modern_ui.h"
+#include <sys/time.h>
+
+float g_measured_fps = 60.0f;
+static uint64_t g_last_time_usec = 0;
+static int g_fps_frame_count = 0;
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -92,6 +97,7 @@ static void init_default_layout(void) {
     strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
     
     /* Inicializar estado inicial en la pila de historial */
+    eonsurf_tabs_init();
     eonsurf_history_push(current_url, page_body, 0, 200, strlen(page_body));
 
     /* Filas iniciales dinámicas para Ficha Técnica */
@@ -459,6 +465,7 @@ static void navigate_to(const char *input_url)
         return;
     }
 
+    g_net_loading = 1;
     CURL *curl = curl_easy_init();
     if (curl) {
         struct HttpMemoryBuffer chunk = {0};
@@ -531,6 +538,7 @@ static void navigate_to(const char *input_url)
         if (chunk.data) free(chunk.data);
         curl_easy_cleanup(curl);
     }
+    g_net_loading = 0;
 }
 
 int main(void)
@@ -555,6 +563,19 @@ int main(void)
 
     while (running) {
         int ax = 128, ay = 128;
+        /* Medición real de FPS cada 30 frames */
+        g_fps_frame_count++;
+        if (g_fps_frame_count >= 30) {
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            uint64_t now_usec = (uint64_t)tv.tv_sec * 1000000ULL + tv.tv_usec;
+            if (g_last_time_usec > 0 && now_usec > g_last_time_usec) {
+                uint64_t elapsed = now_usec - g_last_time_usec;
+                g_measured_fps = (float)(30.0 * 1000000.0 / (double)elapsed);
+            }
+            g_last_time_usec = now_usec;
+            g_fps_frame_count = 0;
+        }
         sysUtilCheckCallback();
 
         /* Comprobar si el usuario confirmo texto en el teclado Sony OSK */
@@ -622,6 +643,35 @@ int main(void)
 
             /* 3. Clic con Cruz [X] */
             if (pdata.BTN_CROSS && !prev_btn_cross) {
+                /* A. Clic sobre pestañas superiores o botón '+' */
+                int tab_click = eonsurf_tabs_check_click(px, py);
+                if (tab_click >= 0 && tab_click < MAX_TABS) {
+                    /* Guardar estado de la pestaña actual antes de cambiar */
+                    strncpy(g_tabs[g_current_tab].url, current_url, sizeof(g_tabs[g_current_tab].url) - 1);
+                    strncpy(g_tabs[g_current_tab].title, page_title, sizeof(g_tabs[g_current_tab].title) - 1);
+                    strncpy(g_tabs[g_current_tab].body, page_body, sizeof(g_tabs[g_current_tab].body) - 1);
+                    g_tabs[g_current_tab].scroll_y = scroll_y;
+                    
+                    eonsurf_tab_select(tab_click);
+                    strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
+                    strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
+                    strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
+                    scroll_y = g_tabs[g_current_tab].scroll_y;
+                } else if (tab_click >= 10 && tab_click < 10 + MAX_TABS) {
+                    /* Cerrar pestaña */
+                    eonsurf_tab_close(tab_click - 10);
+                    strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
+                    strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
+                    strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
+                    scroll_y = g_tabs[g_current_tab].scroll_y;
+                } else if (tab_click == 99) {
+                    /* Abrir nueva pestaña con Speed Dial */
+                    eonsurf_tab_open_new("eonsurf://portal", "Portal EonSurf");
+                    strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
+                    strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
+                    strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
+                    scroll_y = 0;
+                }
                 /* A. Clic en botones '←', '→' o '↻' de la barra superior */
                 int nav_click = eonsurf_check_nav_buttons_click(px, py);
                 if (nav_click == -1) {

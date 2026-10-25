@@ -12,6 +12,9 @@
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_modern_ui.h"
 #include "eonsurf_mockup_details.h"
+#include "eonsurf_tabs.h"
+#include "eonsurf_cursor.h"
+#include "eonsurf_article_extractor.h"
 
 /* ============================================================================
  * 1. MEZCLADOR SUB-PÍXEL ARGB DE ALTA VELOCIDAD
@@ -406,23 +409,33 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_build_mockup_background();
     memcpy(fb, g_mockup_bg_cache, 1280 * 720 * sizeof(uint32_t));
 
-    /* Pestañas superiores estilo Chrome */
-    /* Pestaña 1 (Activa con Glow Neón envolvente) */
-    eonsurf_draw_chrome_tab(fb, pitch, 48,  8, 270, 42, "EonSurf Portal", 1, 0);
-    eonsurf_draw_mockup_text(fb, pitch, 62, 20, 16, "1", 0x8899AA, 0, 80);
-    eonsurf_draw_globe_icon(fb, pitch, 88, 28);
+    /* Pestañas superiores dinámicas estilo Chrome */
+    int tab_w = 230;
+    int tab_x = 48;
+    int active_tab_x = 48;
+    for (int t = 0; t < MAX_TABS; t++) {
+        if (!g_tabs[t].active) continue;
+        int is_act = (t == g_current_tab);
+        if (is_act) active_tab_x = tab_x;
+        int is_wiki = (strstr(g_tabs[t].url, "wikipedia") != NULL);
+        eonsurf_draw_chrome_tab(fb, pitch, tab_x, 8, tab_w, 42, g_tabs[t].title, is_act, is_wiki);
+        char tab_num[8]; snprintf(tab_num, sizeof(tab_num), "%d", t + 1);
+        eonsurf_draw_mockup_text(fb, pitch, tab_x + 14, 20, 16, tab_num, is_act ? 0x8899AA : 0x556677, 0, tab_x + 35);
+        if (t == 0) eonsurf_draw_globe_icon(fb, pitch, tab_x + 38, 28);
+        tab_x += tab_w + 8;
+    }
+    /* Botón '+' para nueva pestaña */
+    eonsurf_draw_mockup_text(fb, pitch, tab_x + 8, 17, 24, "+", 0x38E8FF, 0, tab_x + 35);
 
-    /* Pestaña 2 (Inactiva con [W] Wikipedia) */
-    eonsurf_draw_chrome_tab(fb, pitch, 326, 8, 270, 42, "Wikipedia - Cell B.E.", 0, 1);
-    eonsurf_draw_mockup_text(fb, pitch, 340, 20, 16, "2", 0x667788, 0, 360);
-    eonsurf_draw_mockup_text(fb, pitch, 608, 17, 22, "+", 0x90A4B8, 0, 640);
+    /* Línea horizontal neón continua que une la pestaña activa */
+    eonsurf_draw_tab_baseline_glow(fb, pitch, active_tab_x, tab_w);
 
-    /* 2. Línea horizontal neón continua que une la pestaña activa */
-    eonsurf_draw_tab_baseline_glow(fb, pitch, 48, 270);
-
-    /* Badge "Cell B.E. • 60 FPS" */
+    /* Badge Telemetría Cell B.E. + Medidor FPS Dinámico */
+    extern float g_measured_fps;
+    char fps_label[32];
+    snprintf(fps_label, sizeof(fps_label), "Cell B.E.  %.1f FPS", (g_measured_fps > 10.0f && g_measured_fps < 120.0f) ? g_measured_fps : 60.0f);
     eonsurf_draw_glowing_pill(fb, pitch, 1082, 11, 178, 34, 0x101C28, 0x00E5FF);
-    eonsurf_draw_mockup_text(fb, pitch, 1098, 19, 16, "Cell B.E.  60 FPS", 0xE8F4FF, 0, 1255);
+    eonsurf_draw_mockup_text(fb, pitch, 1094, 19, 15, fps_label, 0xE8F4FF, 0, 1255);
     for (int dy = -2; dy <= 2; dy++)
         for (int dx = -2; dx <= 2; dx++)
             mk_blend(fb, pitch, 1173 + dx, 27 + dy, 0x55F0FF, 255);
@@ -440,34 +453,40 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     const char *display_title = (strstr(current_url, "eonsurf://") != NULL) ? "EonSurf Browser" : article_title;
     eonsurf_draw_mockup_text(fb, pitch, 88, 142, 34, display_title, 0xFFFFFF, 1, 870);
 
-    /* Columna Derecha (30% Infobox Dark Glass) */
-    eonsurf_draw_glass_panel(fb, pitch, 908, 120, 332, 525, 10, 0xFF1E2938, 0xFF111822, 0xFF0284C7, 240);
-    
-    int img_box_y = 138;
-    int img_box_h = 160;
-    rect_rounded(922, img_box_y, 304, img_box_h, 6, 0x000b0f17);
+    /* Determinamos si esta página tiene infobox relevante (ej. Wikipedia con imagen o telemetría) */
+    int has_infobox = (g_layout.infobox_rgba_tex != NULL || strstr(current_url, "wikipedia") != NULL);
+    int content_max_x = has_infobox ? 865 : 1200;
 
-    if (strstr(current_url, "eonsurf://") != NULL || (!g_layout.infobox_rgba_tex)) {
-        /* Renderizado del chip 3D isométrico sci-fi */
-        eonsurf_draw_isometric_chip(fb, pitch, 1074, img_box_y + 80);
-        eonsurf_draw_mockup_text(fb, pitch, 988, 316, 22, "EonSurf Core", 0xFFFFFF, 1, 1180);
-    } else {
-        eonsurf_blit_infobox_image(fb, pitch, g_layout.infobox_rgba_tex, g_layout.img_w, g_layout.img_h,
-                                   926, img_box_y + 4, 296, img_box_h - 8);
-        eonsurf_draw_mockup_text(fb, pitch, 924, 316, 20, article_title, 0x00FFFFFF, 1, 1220);
-    }
+    if (has_infobox) {
+        /* Columna Derecha (30% Infobox Dark Glass) */
+        eonsurf_draw_glass_panel(fb, pitch, 908, 120, 332, 525, 10, 0xFF1E2938, 0xFF111822, 0xFF0284C7, 240);
+        
+        int img_box_y = 138;
+        int img_box_h = 160;
+        rect_rounded(922, img_box_y, 304, img_box_h, 6, 0x000b0f17);
 
-    /* 3. Infobox Derecha: Claves en blanco perla legible (0xFFE0EEF8) y valores en cian (0x48D8FF) */
-    int base_y = 368;
-    for (int i = 0; i < g_info_row_count && i < 5; i++) {
-        int ry = base_y + (i * 44);
-        for (int x = 922; x < 1222; x++) {
-            mk_blend(fb, pitch, x, ry - 6, 0x182838, 90);
+        if (strstr(current_url, "eonsurf://") != NULL || (!g_layout.infobox_rgba_tex)) {
+            /* Renderizado del chip 3D isométrico sci-fi */
+            eonsurf_draw_isometric_chip(fb, pitch, 1074, img_box_y + 80);
+            eonsurf_draw_mockup_text(fb, pitch, 988, 316, 22, "EonSurf Core", 0xFFFFFF, 1, 1180);
+        } else {
+            eonsurf_blit_infobox_image(fb, pitch, g_layout.infobox_rgba_tex, g_layout.img_w, g_layout.img_h,
+                                       926, img_box_y + 4, 296, img_box_h - 8);
+            eonsurf_draw_mockup_text(fb, pitch, 924, 316, 20, article_title, 0x00FFFFFF, 1, 1220);
         }
-        /* Clave en Blanco Perla legible */
-        eonsurf_draw_mockup_text(fb, pitch, 930,  ry, 16, g_info_rows[i].key, 0xFFE0EEF8, 1, 1030);
-        /* Valor en Cian Neón vibrante */
-        eonsurf_draw_mockup_text(fb, pitch, 1040, ry, 16, g_info_rows[i].val, 0x48D8FF, 1, 1224);
+
+        /* 3. Infobox Derecha: Claves en blanco perla legible (0xFFE0EEF8) y valores en cian (0x48D8FF) */
+        int base_y = 368;
+        for (int i = 0; i < g_info_row_count && i < 5; i++) {
+            int ry = base_y + (i * 44);
+            for (int x = 922; x < 1222; x++) {
+                mk_blend(fb, pitch, x, ry - 6, 0x182838, 90);
+            }
+            /* Clave en Blanco Perla legible */
+            eonsurf_draw_mockup_text(fb, pitch, 930,  ry, 16, g_info_rows[i].key, 0xFFE0EEF8, 1, 1030);
+            /* Valor en Cian Neón vibrante */
+            eonsurf_draw_mockup_text(fb, pitch, 1040, ry, 16, g_info_rows[i].val, 0x48D8FF, 1, 1224);
+        }
     }
 
     /* 4. Dibuja la franja oscura de foco detrás del párrafo donde apunta el cursor */
@@ -493,12 +512,12 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         word[wi] = '\0';
 
         int est_w = wi * 9;
-        if (cur_x + est_w > 865) {
+        if (cur_x + est_w > content_max_x) {
             cur_x = 88;
             cur_y += 24;
             if (cur_y >= 620) break;
         }
-        cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, 870);
+        cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
     }
 
     /* Barra de scroll vertical integrada a la derecha del panel de lectura */
@@ -529,8 +548,8 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     /* Barra flotante de descarga OSD */
     eonsurf_draw_download_osd(fb, pitch);
 
-    /* Cursor Neón grande con resplandor turquesa */
-    eonsurf_draw_neon_cursor(fb, pitch, cursor_x, cursor_y);
+    /* Puntero del ratón ergonómico con feedback de carga titilante */
+    eonsurf_draw_cursor(fb, pitch, cursor_x, cursor_y);
 }
 
 #endif /* EONSURF_MOCKUP_ENGINE_H */
