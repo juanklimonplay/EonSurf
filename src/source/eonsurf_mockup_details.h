@@ -36,50 +36,59 @@ static inline void eonsurf_draw_globe_icon(uint32_t *fb, int pitch, int cx, int 
  * 2. EMBLEMA SCI-FI PROCEDURAL EONSURF [ES] CON GLOW REACTIVO
  * ============================================================================ */
 static inline void eonsurf_draw_hex_es_emblem(uint32_t *fb, int pitch, int cx, int cy, int is_hover) {
-    /* Orbe de plasma y reactor de fusión procedural EonSurf */
-    int r = 22;
-    uint32_t ring_color = is_hover ? 0x00FFFF : 0x38BDF8;
-    uint32_t glow_color = is_hover ? 0x38E8FF : 0x0284C7;
-    uint32_t core_bg    = is_hover ? 0x0C2E4A : 0x091828;
+    /* Emblema Vectorial Procedural Sci-Fi Eon Core con Reactor Luminoso */
+    int r = 21;
+    uint32_t ring_col  = is_hover ? 0x00FFFF : 0x38BDF8;
+    uint32_t glow_col  = is_hover ? 0x00E5FF : 0x0284C7;
+    uint32_t core_col  = is_hover ? 0x0A263D : 0x071524;
+    uint32_t spark_col = is_hover ? 0xFFFFFF : 0x67E8F9;
 
     for (int dy = -r - 4; dy <= r + 4; dy++) {
         for (int dx = -r - 4; dx <= r + 4; dx++) {
             float dist = sqrtf((float)(dx * dx + dy * dy));
 
-            /* Resplandor exterior difuso (Aura / Glow) */
+            /* Aura difusa / Glow pulsante */
             if (dist > (float)r && dist <= (float)(r + 4)) {
-                float factor = (float)(r + 4 - dist) / 4.0f;
-                int alpha = (int)(factor * (is_hover ? 160.0f : 90.0f));
-                mk_blend(fb, pitch, cx + dx, cy + dy, glow_color, alpha);
+                float t = (float)(r + 4 - dist) / 4.0f;
+                int alpha = (int)(t * (is_hover ? 180.0f : 85.0f));
+                mk_blend(fb, pitch, cx + dx, cy + dy, glow_col, alpha);
             }
-            /* Anillo exterior cromado / neón */
+            /* Anillo exterior cromado Sci-Fi */
             else if (dist <= (float)r && dist >= (float)(r - 2.5f)) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, ring_color, 255);
+                mk_blend(fb, pitch, cx + dx, cy + dy, ring_col, 255);
             }
-            /* Núcleo oscuro Dark Glass translúcido */
-            else if (dist < (float)(r - 2.5f) && dist >= (float)(r - 6)) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, core_bg, 220);
-            }
-            /* Anillo orbital secundario interior */
-            else if (dist < (float)(r - 6) && dist >= (float)(r - 7.5f)) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, is_hover ? 0x67E8F9 : 0x0EA5E9, 200);
-            }
-            /* Centro del reactor */
-            else if (dist < (float)(r - 7.5f)) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, is_hover ? 0x164E63 : 0x051320, 240);
+            /* Cavidad interna Dark Glass */
+            else if (dist < (float)(r - 2.5f)) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, core_col, 230);
             }
         }
     }
 
-    /* Resplandor cruzado del reactor (4 puntas de estrella sutiles) */
-    for (int d = -r + 4; d <= r - 4; d++) {
-        mk_blend(fb, pitch, cx + d, cy, ring_color, is_hover ? 140 : 80);
-        mk_blend(fb, pitch, cx, cy + d, ring_color, is_hover ? 140 : 80);
+    /* Símbolo central 'E' estilizado futurista y dinámico (sin fuentes toscas) */
+    for (int dy = -10; dy <= 10; dy++) {
+        /* Barra vertical izquierda */
+        for (int dx = -7; dx <= -4; dx++) {
+            mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+        }
+        /* Barra superior horizontal */
+        if (dy >= -10 && dy <= -7) {
+            for (int dx = -4; dx <= 8; dx++) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+            }
+        }
+        /* Barra media horizontal con corte cian */
+        if (dy >= -2 && dy <= 1) {
+            for (int dx = -4; dx <= 5; dx++) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, is_hover ? 0x38BDF8 : 0x00E5FF, 255);
+            }
+        }
+        /* Barra inferior horizontal */
+        if (dy >= 7 && dy <= 10) {
+            for (int dx = -4; dx <= 8; dx++) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+            }
+        }
     }
-
-    /* Tipografía nítida centrada "ES" con sombreado de profundidad */
-    uint32_t text_col = is_hover ? 0xFFFFFF : 0xE0F2FE;
-    eonsurf_draw_mockup_text(fb, pitch, cx - 11, cy - 9, 16, "ES", text_col, 1, cx + 18);
 }
 
 /* Emblema PlayStation retrocompatible si se requiere */
@@ -110,21 +119,8 @@ static inline void eonsurf_draw_tab_baseline_glow(uint32_t *fb, int pitch, int a
  * 4. CAJA DE FOCO / SELECCIÓN DETRÁS DEL PÁRRAFO BAJO EL CURSOR + CITAS [1]
  * ============================================================================ */
 static inline void eonsurf_draw_paragraph_focus_box(uint32_t *fb, int pitch, int cursor_y) {
-    /* Si el cursor está sobre el área de lectura, resalta sutilmente esa franja */
-    if (cursor_y < 235 || cursor_y > 610) return;
-
-    /* Alinear a la grilla de renglones de 24px */
-    int band_y = 238 + ((cursor_y - 238) / 48) * 48;
-    for (int py = band_y - 4; py < band_y + 46; py++) {
-        if (py < 210 || py >= 635) continue;
-        for (int px = 84; px < 540; px++) {
-            /* Degradado horizontal suave que se funde hacia la derecha */
-            int fade = 90 - ((px - 84) * 90) / 456;
-            if (fade > 0) {
-                mk_blend(fb, pitch, px, py, 0x0A1828, fade);
-            }
-        }
-    }
+    /* Desactivado para lienzo limpio de lectura nativo */
+    (void)fb; (void)pitch; (void)cursor_y;
 }
 
 /* 

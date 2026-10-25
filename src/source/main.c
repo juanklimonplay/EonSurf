@@ -42,6 +42,8 @@
 float g_measured_fps = 60.0f;
 int g_ram_used_mb = 48;
 int g_settings_menu_open = 0;
+int g_sidebar_visible = 0; /* Barra lateral oculta por defecto para pantalla completa */
+int g_dock_visible = 1;    /* Barra dock inferior de controles */
 static uint64_t g_last_time_usec = 0;
 static int g_fps_frame_count = 0;
 
@@ -56,9 +58,11 @@ static u32 *fb[2];
 static u32 fb_off[2];
 static int cur, first = 1, running = 1;
 
-static char current_url[512] = "https://es.wikipedia.org/wiki/PlayStation_3";
-static char page_title[256] = "PlayStation 3 - Wikipedia, la enciclopedia libre";
-static char page_body[8192] = "PlayStation 3 (oficialmente abreviada como PS3) es la tercera videoconsola del modelo PlayStation de Sony Computer Entertainment.\n\nForma parte de las videoconsolas de séptima generación y compitió contra la Xbox 360 de Microsoft y la Wii de Nintendo. Su procesador central es el Cell Broadband Engine diseñado conjuntamente por Sony, Toshiba e IBM.";
+static char current_url[512] = "eonsurf://portal";
+static char page_title[256] = "Portal EonSurf";
+static char page_body[8192] = "Bienvenido al motor nativo Dark Glass corriendo sobre el silicio Cell B.E. a 60 FPS.
+
+Presiona X sobre cualquier enlace para navegar con aceleracion por hardware RSX.";
 static int net_initialized = 0;
 
 /* Motor de Maquetación Estructurada 70/30 (eonsurf_layout.h) */
@@ -103,8 +107,10 @@ static void init_default_layout(void) {
     strncpy(g_layout.title, "PlayStation 3", sizeof(g_layout.title) - 1);
     strncpy(g_layout.subtitle, "Consola de videojuegos de Sony", sizeof(g_layout.subtitle) - 1);
     
-    /* Inicializar estado inicial en la pila de historial */
+    /* Inicializar estado inicial en la pila de historial con el portal EonSurf */
     eonsurf_tabs_init();
+    eonsurf_format_markdown_and_links(EONSURF_PORTAL_MARKDOWN, current_url);
+    strncpy(page_body, EONSURF_PORTAL_MARKDOWN, sizeof(page_body) - 1);
     eonsurf_history_push(current_url, page_body, 0, 200, strlen(page_body));
 
     /* Filas iniciales dinámicas para Ficha Técnica */
@@ -720,12 +726,27 @@ int main(void)
                 if (px >= 1180 && px <= 1235 && py >= 58 && py <= 100) {
                     g_settings_menu_open = !g_settings_menu_open;
                 }
-                /* Clic dentro de las opciones del Menú de Configuración si está abierto */
-                else if (g_settings_menu_open && px >= 880 && px <= 1250 && py >= 110 && py <= 430) {
-                    if (py >= 175 && py <= 198) g_cursor_style = CURSOR_STYLE_CLASSIC_ARROW;
-                    else if (py >= 200 && py <= 223) g_cursor_style = CURSOR_STYLE_NEON_PRECISION;
-                    else if (py >= 225 && py <= 248) g_cursor_style = CURSOR_STYLE_CROSSHAIR;
-                    else if (py >= 345 && py <= 380) g_settings_menu_open = 0;
+                /* Clic dentro de las opciones del Centro de Control EonSurf si está abierto */
+                else if (g_settings_menu_open && px >= 820 && px <= 1250 && py >= 105 && py <= 500) {
+                    if (px >= 835 && px <= 1235 && py >= 175 && py <= 209) {
+                        /* Opción 1: Alternar barra lateral */
+                        g_sidebar_visible = !g_sidebar_visible;
+                    } else if (px >= 835 && px <= 1235 && py >= 215 && py <= 249) {
+                        /* Opción 2: Alternar dock inferior */
+                        g_dock_visible = !g_dock_visible;
+                    } else if (px >= 835 && px <= 1235 && py >= 255 && py <= 289) {
+                        /* Opción 3: Alternar estilo de puntero */
+                        g_cursor_style = (g_cursor_style + 1) % 3;
+                    } else if (px >= 835 && px <= 1235 && py >= 295 && py <= 329) {
+                        /* Opción 4: Resetear zoom y scroll */
+                        scroll_y = 0;
+                    } else if (px >= 835 && px <= 1235 && py >= 335 && py <= 369) {
+                        /* Opción 5: Ir al Portal de Inicio */
+                        navigate_to("eonsurf://portal");
+                        g_settings_menu_open = 0;
+                    } else if (py >= 435 && py <= 470) {
+                        g_settings_menu_open = 0;
+                    }
                 }
 
                 int tab_click = eonsurf_tabs_check_click(px, py);
@@ -826,8 +847,8 @@ int main(void)
             }
             prev_btn_cross = pdata.BTN_CROSS;
 
+            /* Botón START: Alterna Centro de Control EonSurf */
             if (pdata.BTN_START && !pdata.BTN_SELECT) {
-                /* Abrir / Cerrar Menú de Configuración EonSurf */
                 static int prev_btn_start = 0;
                 if (!prev_btn_start) {
                     g_settings_menu_open = !g_settings_menu_open;
@@ -836,6 +857,28 @@ int main(void)
             } else {
                 static int prev_btn_start = 0;
                 prev_btn_start = 0;
+            }
+
+            /* Botón CUADRADO: Alternar barra lateral (Infobox / Ficha) */
+            {
+                static int prev_btn_sq = 0;
+                if (pdata.BTN_SQUARE) {
+                    if (!prev_btn_sq) g_sidebar_visible = !g_sidebar_visible;
+                    prev_btn_sq = 1;
+                } else {
+                    prev_btn_sq = 0;
+                }
+            }
+
+            /* Botón SELECT: Alternar barra dock inferior */
+            {
+                static int prev_btn_sel = 0;
+                if (pdata.BTN_SELECT && !pdata.BTN_START) {
+                    if (!prev_btn_sel) g_dock_visible = !g_dock_visible;
+                    prev_btn_sel = 1;
+                } else {
+                    prev_btn_sel = 0;
+                }
             }
 
             if (pdata.BTN_START && pdata.BTN_SELECT) {
