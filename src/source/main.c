@@ -524,12 +524,12 @@ static void navigate_to(const char *input_url)
 
             snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, target_url);
 
-            char raw_extracted[7800] = "";
+            static char raw_extracted[16384];
             int parsed_ok = 0;
 
             /* Si es una pagina de resultados de DuckDuckGo Lite, extraer snippets y titulos a Markdown */
             if (strstr(target_url, "duckduckgo.com")) {
-                char search_md[7800] = "";
+                static char search_md[16384];
                 if (eonsurf_parse_duckduckgo_results(chunk.data, search_md, sizeof(search_md))) {
                     eonsurf_format_markdown_and_links(search_md, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
                     parsed_ok = 1;
@@ -538,13 +538,13 @@ static void navigate_to(const char *input_url)
 
             if (!parsed_ok) {
                 /* Intentar extracción con el nuevo motor de lectura de artículos web limpios */
-                char extracted_title[128] = "";
-                char extracted_body[8192] = "";
+                static char extracted_title[128];
+                static char extracted_body[16384];
+                static char cleaned_body[16384];
                 if (eonsurf_extract_clean_article(chunk.data, chunk.size, extracted_title, sizeof(extracted_title), extracted_body, sizeof(extracted_body))) {
                     if (strlen(extracted_title) > 0) {
                         strncpy(page_title, extracted_title, sizeof(page_title) - 1);
                     }
-                    char cleaned_body[8192] = "";
                     eonsurf_strip_wiki_garbage(extracted_body, cleaned_body, sizeof(cleaned_body));
                     eonsurf_format_markdown_and_links(cleaned_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
                     parsed_ok = 1;
@@ -564,9 +564,6 @@ static void navigate_to(const char *input_url)
             char detected_img_url[256] = "";
             if (eonsurf_find_first_image_url(chunk.data, detected_img_url, sizeof(detected_img_url))) {
                 if (eonsurf_fetch_and_decode_infobox_image(detected_img_url)) {
-                    if (g_layout.infobox_rgba_tex && g_layout.infobox_rgba_tex != g_infobox_tex) {
-                        free(g_layout.infobox_rgba_tex);
-                    }
                     g_layout.infobox_rgba_tex = g_infobox_tex;
                     g_layout.img_w = g_infobox_w;
                     g_layout.img_h = g_infobox_h;
@@ -787,11 +784,13 @@ int main(void)
                 else {
                     const char *clicked_link = eonsurf_check_link_click(px, py);
                     if (clicked_link) {
+                        char link_copy[512] = "";
+                        strncpy(link_copy, clicked_link, sizeof(link_copy) - 1);
                         /* Interceptor de descargas directas a disco (.pkg, .zip, .iso, .rar, .7z) */
-                        if (eonsurf_is_downloadable_file(clicked_link)) {
-                            eonsurf_start_direct_download(clicked_link);
+                        if (eonsurf_is_downloadable_file(link_copy)) {
+                            eonsurf_start_direct_download(link_copy);
                         } else {
-                            navigate_to(clicked_link);
+                            navigate_to(link_copy);
                         }
                     }
                     /* Barra de URL superior (Pill neón en Y: 58-100, X: 182-1152) */
