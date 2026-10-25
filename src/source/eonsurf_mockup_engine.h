@@ -15,6 +15,8 @@
 #include "eonsurf_tabs.h"
 #include "eonsurf_cursor.h"
 #include "eonsurf_article_extractor.h"
+#include "eonsurf_block_engine.h"
+#include "eonsurf_rich_blocks.h"
 
 /* ============================================================================
  * 1. MEZCLADOR SUB-PÍXEL ARGB DE ALTA VELOCIDAD
@@ -515,8 +517,7 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_hex_es_emblem(fb, pitch, 1225, 79, is_es_hover);
 
     /* Título H1 a 34px sobre el panel de lectura */
-    const char *display_title = (strstr(current_url, "eonsurf://") != NULL) ? "EonSurf Browser" : article_title;
-    eonsurf_draw_mockup_text(fb, pitch, 88, 142, 34, display_title, 0xFFFFFF, 1, 870);
+    /* Titulo principal renderizado como Hero Card en eonsurf_render_rich_web_blocks */
 
     extern int g_sidebar_visible;
     extern int g_dock_visible;
@@ -560,110 +561,16 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         }
     }
 
-    /* 4. Dibuja la franja oscura de foco detrás del párrafo donde apunta el cursor */
-    eonsurf_draw_paragraph_focus_box(fb, pitch, cursor_y);
-
-    /* 1. Renderizado del cuerpo del documento con scroll_y dinámico y cálculo de altura total */
-    int active_font_px = eonsurf_get_active_body_font_px();
-    int line_h = active_font_px + 8;
-    int cur_x = 88;
-    int base_doc_y = 238 - scroll_y;
-    int cur_y = base_doc_y;
-    uint32_t cur_col = 0xF4F8FC;
-    const char *p = article_body;
-    char word[128];
-    int link_idx = 0;
-    for (int li = 0; li < g_link_count; li++) {
-        g_links[li].x = 0; g_links[li].y = 0; g_links[li].w = 0; g_links[li].h = 0;
-        g_links[li].visible = 0;
-    }
-
-    while (*p) {
-        if (*p == '\x01') { cur_col = 0x38BDF8; p++; continue; } /* Enlace azul cian brillante */
-        if (*p == '\x02') { cur_col = 0xF4F8FC; link_idx++; p++; continue; } /* Fin enlace */
-        if (*p == '\n')   { cur_x = 88; cur_y += line_h; p++; continue; }
-        if (*p == ' ')    { cur_x += 7; p++; continue; }
-
-        int wi = 0;
-        while (*p && *p != ' ' && *p != '\n' && *p != '\x01' && *p != '\x02' && wi < 120) {
-            word[wi++] = *p++;
-        }
-        word[wi] = '\0';
-
-        int est_w = wi * 9;
-        if (cur_x + est_w > content_max_x) {
-            cur_x = 88;
-            cur_y += line_h;
-        }
-
-        /* Solo dibujar si la línea cae dentro de la ventana visible del panel (Y: 210 a 625) */
-        if (cur_y >= 210 && cur_y <= 625) {
-            int prev_x = cur_x;
-            if (strcmp(word, "[CODE]") == 0) {
-                /* Caja de insignia de bloque de código en carbón con borde cian */
-                for (int cy = cur_y - 2; cy <= cur_y + 16; cy++) {
-                    for (int cx = prev_x; cx <= prev_x + 64; cx++) {
-                        mk_blend(fb, pitch, cx, cy, 0x0F172A, 240);
-                    }
-                }
-                for (int cx = prev_x; cx <= prev_x + 64; cx++) {
-                    mk_blend(fb, pitch, cx, cur_y - 2, 0x38BDF8, 255);
-                    mk_blend(fb, pitch, cx, cur_y + 16, 0x38BDF8, 255);
-                }
-                cur_x = eonsurf_draw_mockup_text(fb, pitch, prev_x + 6, cur_y, 14, "CODE", 0x38BDF8, 0, content_max_x);
-                cur_x += 8;
-            } else if (strncmp(word, "----------------", 16) == 0) {
-                /* Divisor horizontal con degradado en los extremos */
-                for (int lx = 88; lx < content_max_x - 10; lx++) {
-                    float t = (float)(lx - 88) / (float)(content_max_x - 98);
-                    float edge_fade = sinf(t * 3.14159f);
-                    int alpha = (int)(edge_fade * 180.0f);
-                    mk_blend(fb, pitch, lx, cur_y + 8, 0x38BDF8, alpha);
-                }
-                cur_x = content_max_x;
-            } else {
-                cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
-            }
-            /* Si es un enlace, registrar bounding box y subrayado sutil */
-            if (cur_col == 0x38BDF8) {
-                if (link_idx < g_link_count) {
-                    if (g_links[link_idx].x == 0) {
-                        g_links[link_idx].x = prev_x;
-                        g_links[link_idx].y = cur_y;
-                        g_links[link_idx].w = cur_x - prev_x;
-                        g_links[link_idx].h = line_h;
-                        g_links[link_idx].visible = 1;
-                    } else if (g_links[link_idx].y == cur_y) {
-                        g_links[link_idx].w = cur_x - g_links[link_idx].x;
-                    }
-                }
-                int is_hovered = (cursor_x >= prev_x - 3 && cursor_x <= cur_x + 3 && cursor_y >= cur_y - 2 && cursor_y <= cur_y + line_h + 3);
-                uint32_t under_col = is_hovered ? 0x00FFFF : 0x38BDF8;
-                int under_alpha = is_hovered ? 255 : 150;
-                for (int lx = prev_x; lx < cur_x; lx++) {
-                    mk_blend(fb, pitch, lx, cur_y + 15, under_col, under_alpha);
-                    if (is_hovered) {
-                        mk_blend(fb, pitch, lx, cur_y + 16, 0x00E5FF, 200);
-                        mk_blend(fb, pitch, lx, cur_y + 17, 0x0284C7, 100);
-                    }
-                }
-            }
-        } else {
-            cur_x += est_w;
-        }
-    }
-
-    /* Calcular scroll máximo disponible para este documento */
-    int total_doc_h = cur_y - base_doc_y;
-    int max_s = total_doc_h - 380;
-    if (max_s < 0) max_s = 0;
-    if (out_max_scroll) *out_max_scroll = max_s;
+    /* RENDERIZADO VISUAL ENRIQUECIDO POR BLOQUES WEB, TARJETAS Y HERO BANNERS */
+    eonsurf_render_rich_web_blocks(fb, pitch, article_body, article_title, content_max_x,
+                                  cursor_x, cursor_y, scroll_y, out_max_scroll);
+    int max_s = (out_max_scroll) ? *out_max_scroll : 0;
 
     /* Barra de scroll visual proporcional */
     int scrollbar_track_h = 345;
     int scrollbar_y = 235;
     if (max_s > 0) {
-        int thumb_h = (380 * scrollbar_track_h) / (total_doc_h > 0 ? total_doc_h : 1);
+        int thumb_h = (380 * scrollbar_track_h) / (max_s + 400);
         if (thumb_h < 24) thumb_h = 24;
         int thumb_y = scrollbar_y + (scroll_y * (scrollbar_track_h - thumb_h)) / max_s;
         /* Pista de scroll */
