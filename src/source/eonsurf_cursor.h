@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <math.h>
 
+/* Prototipo de mk_blend para llamadas tempranas */
+static inline void mk_blend(uint32_t *fb, int pitch, int x, int y, uint32_t rgb, int alpha);
+
 /* Modos de puntero */
 typedef enum {
     CURSOR_STYLE_CLASSIC_ARROW = 0, /* Flecha clásica estilizada de sistema operativo (Recomendada) */
