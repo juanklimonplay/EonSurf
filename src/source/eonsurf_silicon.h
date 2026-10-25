@@ -52,15 +52,22 @@ typedef struct {
     uint32_t avail; /* Memoria libre disponible */
 } sys_memory_info_t;
 
+LV2_SYSCALL sys_memory_get_user_memory_size(sys_memory_info_t *mem_info) {
+    lv2syscall1(352, (u64)mem_info);
+    return_to_user_prog(s32);
+}
+
 static inline int eonsurf_get_real_ram_used_mb(void) {
     sys_memory_info_t mem_info;
-    memset(&mem_info, 0, sizeof(mem_info));
-    lv2syscall1(352, (uint64_t)&mem_info);
-    if (mem_info.total > 0 && mem_info.avail <= mem_info.total) {
-        uint32_t used_bytes = mem_info.total - mem_info.avail;
-        return (int)(used_bytes / (1024 * 1024));
+    mem_info.total = 0;
+    mem_info.avail = 0;
+    if (sys_memory_get_user_memory_size(&mem_info) == 0) {
+        if (mem_info.total > 0 && mem_info.avail <= mem_info.total) {
+            uint32_t used_bytes = mem_info.total - mem_info.avail;
+            return (int)(used_bytes / (1024 * 1024));
+        }
     }
-    return 48; /* Valor base estimado si syscall no responde */
+    return 48; /* Valor base estimado si la llamada no responde */
 }
 
 /* =========================================================================
