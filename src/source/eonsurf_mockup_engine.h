@@ -177,7 +177,7 @@ static inline int eonsurf_draw_mockup_text(uint32_t *fb, int pitch, int x, int y
 }
 
 /* ============================================================================
- * 3. FONDO CON ONDAS XMB Y SPOTLIGHT RADIAL GRIS-PLATA
+ * 3. FONDO CON ONDAS XMB Y SPOTLIGHT RADIAL DINAMICO
  * ============================================================================ */
 
 static uint32_t g_mockup_bg_cache[1280 * 720] __attribute__((aligned(128)));
@@ -194,7 +194,7 @@ static inline void eonsurf_build_mockup_background(void) {
             float g = 13.0f + ny * 18.0f;
             float b = 23.0f + ny * 28.0f;
 
-            /* Ondas de seda luminosas XMB */
+            /* Ondas de seda luminosas XMB elegantes y fluidas */
             float wave1 = 440.0f + sinf(nx * 5.2f + 0.8f) * 38.0f + cosf(nx * 2.1f) * 18.0f;
             float dist1 = fabsf((float)y - wave1);
             if (dist1 < 65.0f) {
@@ -215,21 +215,6 @@ static inline void eonsurf_build_mockup_background(void) {
                 b += glow2 * 180.0f;
             }
 
-            /* Panel Izquierdo con Spotlight Radial */
-            if (x >= 40 && x <= 890 && y >= 120 && y <= 645) {
-                float dx = (float)(x - 450) / 520.0f;
-                float dy = (float)(y - 210) / 340.0f;
-                float radial = 1.0f - sqrtf(dx * dx + dy * dy);
-                if (radial < 0.0f) radial = 0.0f;
-
-                float glass_alpha = 0.22f + radial * 0.68f;
-                r = r * (1.0f - glass_alpha) + (195.0f * radial + 30.0f * (1.0f - radial)) * glass_alpha;
-                g = g * (1.0f - glass_alpha) + (205.0f * radial + 45.0f * (1.0f - radial)) * glass_alpha;
-                b = b * (1.0f - glass_alpha) + (215.0f * radial + 62.0f * (1.0f - radial)) * glass_alpha;
-
-                if (y == 120 || y == 121) { r = 110.0f; g = 140.0f; b = 165.0f; }
-            }
-
             if (r > 255.0f) r = 255.0f;
             if (g > 255.0f) g = 255.0f;
             if (b > 255.0f) b = 255.0f;
@@ -239,55 +224,101 @@ static inline void eonsurf_build_mockup_background(void) {
     g_mockup_bg_ready = 1;
 }
 
+/* Dibuja dinamicamente el lienzo de lectura que llena el espacio al ocultar la barra lateral o el dock */
+static inline void eonsurf_draw_content_backdrop(uint32_t *fb, int pitch, int max_x, int max_y) {
+    int start_x = 48;
+    int end_x = max_x + 12;
+    int start_y = 120;
+    int end_y = max_y;
+
+    float center_x = (float)(start_x + end_x) * 0.5f;
+    float center_y = (float)(start_y + end_y) * 0.4f;
+    float span_x = (float)(end_x - start_x) * 0.55f;
+    float span_y = (float)(end_y - start_y) * 0.55f;
+
+    for (int y = start_y; y <= end_y; y++) {
+        if ((unsigned)y >= 720) continue;
+        float dy = (float)(y - center_y) / span_y;
+        float dy2 = dy * dy;
+
+        for (int x = start_x; x <= end_x; x++) {
+            if ((unsigned)x >= 1280) continue;
+
+            float dx = (float)(x - center_x) / span_x;
+            float radial = 1.0f - sqrtf(dx * dx + dy2);
+            if (radial < 0.0f) radial = 0.0f;
+
+            /* Mezcla Dark Glass elegante con sutileza */
+            int base_alpha = 180 + (int)(radial * 40.0f);
+            uint32_t plate_rgb = (radial > 0.4f) ? 0x1A2535 : 0x111924;
+            mk_blend(fb, pitch, x, y, plate_rgb, base_alpha);
+
+            /* Borde superior con sutil reflejo especular */
+            if (y == start_y || y == start_y + 1) {
+                mk_blend(fb, pitch, x, y, 0x48A0D8, 120);
+            }
+        }
+    }
+}
+
 /* ============================================================================
  * 4. PESTAÑAS CHROME, ICONOS TOOLBAR Y CURSOR NEÓN MOCKUP
  * ============================================================================ */
 
 static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y, int w, int h,
                                            const char *title, int is_active, int is_wiki) {
-    uint32_t fill_top = is_active ? 0x202D3C : 0x121A24;
-    uint32_t fill_bot = is_active ? 0x151F2B : 0x0D141C;
-    uint32_t glow_col = is_active ? 0x55E8FF : 0x2E4052;
+    /* Pestanas modernas redondeadas ergonomicas tipo píldora */
+    int r = 10; /* Radio de curvatura superior */
+    uint32_t fill_top = is_active ? 0x1E293B : 0x0F172A;
+    uint32_t fill_bot = is_active ? 0x131D2A : 0x0A0F18;
+    uint32_t border_col = is_active ? 0x00E5FF : 0x2A3B50;
 
     for (int py = y; py < y + h; py++) {
-        float t = (float)(py - y) / (float)h;
-        float curve = sinf((1.0f - t) * 1.5708f);
-        int inset = (int)(curve * 10.0f);
-
-        int left_x  = x + inset;
-        int right_x = x + w - inset;
-
-        for (int px = left_x - 2; px <= right_x + 2; px++) {
-            if (px >= left_x && px <= right_x) {
-                int is_top_border = (py <= y + 1);
-                int is_side_border = (px <= left_x + 1 || px >= right_x - 1);
-                if (is_top_border || is_side_border) {
-                    mk_blend(fb, pitch, px, py, glow_col, is_active ? 255 : 140);
-                } else {
-                    uint32_t col = (py < y + h / 2) ? fill_top : fill_bot;
-                    mk_blend(fb, pitch, px, py, col, 240);
+        for (int px = x; px < x + w; px++) {
+            /* Redondeo en esquinas superiores */
+            if (py < y + r) {
+                if (px < x + r) {
+                    float dx = (float)(x + r - px);
+                    float dy = (float)(y + r - py);
+                    if (dx * dx + dy * dy > (float)(r * r)) continue;
+                } else if (px >= x + w - r) {
+                    float dx = (float)(px - (x + w - r - 1));
+                    float dy = (float)(y + r - py);
+                    if (dx * dx + dy * dy > (float)(r * r)) continue;
                 }
-            } else if (is_active) {
-                mk_blend(fb, pitch, px, py, 0x00D8FF, 95);
+            }
+
+            int is_top = (py == y);
+            int is_left = (px == x && py >= y + r);
+            int is_right = (px == x + w - 1 && py >= y + r);
+            int is_border = is_top || is_left || is_right;
+
+            if (is_border) {
+                mk_blend(fb, pitch, px, py, border_col, is_active ? 255 : 120);
+            } else {
+                float t = (float)(py - y) / (float)h;
+                uint32_t col = (t < 0.5f) ? fill_top : fill_bot;
+                mk_blend(fb, pitch, px, py, col, is_active ? 245 : 180);
             }
         }
     }
 
     if (is_wiki) {
         for (int iy = y + 11; iy < y + 31; iy++) {
-            for (int ix = x + 18; ix < x + 38; ix++) {
+            for (int ix = x + 16; ix < x + 36; ix++) {
                 mk_blend(fb, pitch, ix, iy, 0xF0F4F8, 255);
             }
         }
-        eonsurf_draw_mockup_text(fb, pitch, x + 21, y + 13, 15, "W", 0x10151C, 0, x + 40);
+        eonsurf_draw_mockup_text(fb, pitch, x + 19, y + 13, 15, "W", 0x10151C, 0, x + 38);
     } else {
-        /* Icono de Globo terráqueo Sci-Fi en azul cian */
-        eonsurf_draw_globe_icon(fb, pitch, x + 28, y + 21);
+        /* Icono de Globo terraqueo Sci-Fi en azul cian */
+        eonsurf_draw_globe_icon(fb, pitch, x + 26, y + 21);
     }
 
-    eonsurf_draw_mockup_text(fb, pitch, x + 48, y + 12, 17, title,
-                             is_active ? 0xFFFFFF : 0x90A4B8, 0, x + w - 34);
-    eonsurf_draw_mockup_text(fb, pitch, x + w - 26, y + 12, 16, "x", 0x8899AA, 0, x + w - 8);
+    /* Titulo de la pestana con recorte inteligente y boton 'x' */
+    eonsurf_draw_mockup_text(fb, pitch, x + 44, y + 12, 16, title,
+                             is_active ? 0xFFFFFF : 0x94A3B8, 0, x + w - 28);
+    eonsurf_draw_mockup_text(fb, pitch, x + w - 22, y + 12, 15, "x", 0x64748B, 0, x + w - 6);
 }
 
 static inline void eonsurf_draw_toolbar_icons(uint32_t *fb, int pitch) {
@@ -423,21 +454,20 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         int is_wiki = (strstr(g_tabs[t].url, "wikipedia") != NULL);
         eonsurf_draw_chrome_tab(fb, pitch, tab_x, 8, tab_w, 42, g_tabs[t].title, is_act, is_wiki);
         char tab_num[8]; snprintf(tab_num, sizeof(tab_num), "%d", t + 1);
-        eonsurf_draw_mockup_text(fb, pitch, tab_x + 12, 20, 15, tab_num, is_act ? 0x8899AA : 0x556677, 0, tab_x + 32);
-        if (t == 0) eonsurf_draw_globe_icon(fb, pitch, tab_x + 32, 28);
+        eonsurf_draw_mockup_text(fb, pitch, tab_x + 10, 20, 14, tab_num, is_act ? 0x94A3B8 : 0x556677, 0, tab_x + 24);
         tab_x += tab_w + 4;
     }
-    /* Botón '+' para nueva pestaña */
+    /* Boton '+' para nueva pestana */
     eonsurf_draw_mockup_text(fb, pitch, tab_x + 6, 17, 24, "+", 0x38E8FF, 0, tab_x + 32);
 
-    /* Línea horizontal neón continua que une la pestaña activa */
+    /* Linea horizontal neon continua que une la pestana activa */
     eonsurf_draw_tab_baseline_glow(fb, pitch, active_tab_x, tab_w);
 
-    /* Badge Telemetría Cell B.E. + Medidor RAM XDR / GDDR3 y FPS Dinámico */
+    /* Badge Telemetria Cell B.E. + Medidor RAM XDR / GDDR3 y FPS Dinamico */
     extern float g_measured_fps;
     extern int g_ram_used_mb;
     
-    /* Semáforo de RAM: Verde (< 120MB), Amarillo (120-190MB), Rojo (> 190MB de 256MB) */
+    /* Semaforo de RAM: Verde (< 120MB), Amarillo (120-190MB), Rojo (> 190MB de 256MB) */
     uint32_t ram_color = 0x38BDF8;
     if (g_ram_used_mb < 120) ram_color = 0x22C55E;      /* Verde */
     else if (g_ram_used_mb < 190) ram_color = 0xFACC15; /* Amarillo */
@@ -446,11 +476,17 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     char fps_label[48];
     snprintf(fps_label, sizeof(fps_label), "RAM %d/256MB  %.1fFPS",
              g_ram_used_mb, (g_measured_fps > 10.0f && g_measured_fps < 120.0f) ? g_measured_fps : 60.0f);
-    eonsurf_draw_glowing_pill(fb, pitch, 1030, 11, 230, 34, 0x101C28, ram_color);
-    eonsurf_draw_mockup_text(fb, pitch, 1042, 19, 15, fps_label, 0xE8F4FF, 0, 1255);
-    for (int dy = -2; dy <= 2; dy++)
-        for (int dx = -2; dx <= 2; dx++)
-            mk_blend(fb, pitch, 1150 + dx, 27 + dy, ram_color, 255);
+    eonsurf_draw_glowing_pill(fb, pitch, 1025, 11, 235, 34, 0x101C28, ram_color);
+    
+    /* Punto LED indicador de estado de RAM ubicado limpiamente a la izquierda del texto */
+    for (int dy = -3; dy <= 3; dy++) {
+        for (int dx = -3; dx <= 3; dx++) {
+            if (dx * dx + dy * dy <= 9) {
+                mk_blend(fb, pitch, 1042 + dx, 28 + dy, ram_color, 255);
+            }
+        }
+    }
+    eonsurf_draw_mockup_text(fb, pitch, 1056, 19, 15, fps_label, 0xE8F4FF, 0, 1255);
 
     /* Barra de herramientas con ← → ↻ */
     eonsurf_draw_toolbar_icons(fb, pitch);
@@ -482,9 +518,14 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_mockup_text(fb, pitch, 88, 142, 34, display_title, 0xFFFFFF, 1, 870);
 
     extern int g_sidebar_visible;
+    extern int g_dock_visible;
     /* La columna lateral solo se muestra si el usuario la tiene activa */
     int has_infobox = g_sidebar_visible && (g_layout.infobox_rgba_tex != NULL || strstr(current_url, "wikipedia") != NULL);
     int content_max_x = has_infobox ? 865 : 1220;
+    int content_max_y = g_dock_visible ? 655 : 695;
+
+    /* Dibuja el panel Dark Glass dinamico que se expande a 1220px si la barra lateral esta oculta */
+    eonsurf_draw_content_backdrop(fb, pitch, content_max_x, content_max_y);
 
     if (has_infobox) {
         /* Columna Derecha (30% Infobox Dark Glass) */

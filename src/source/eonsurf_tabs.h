@@ -154,7 +154,7 @@ static inline int eonsurf_tabs_check_click(int cursor_x, int cursor_y) {
             return i;
         }
 
-        slot_x += tab_w + 6;
+        slot_x += tab_w + 4;
     }
 
     /* Comprobar si toco el boton '+' */
