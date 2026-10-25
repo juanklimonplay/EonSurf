@@ -84,10 +84,23 @@ static size_t img_curl_write_cb(void *contents, size_t size, size_t nmemb, void 
 
 /* Busca la primera URL de imagen (.png o .jpg) en el HTML o Markdown */
 static inline int eonsurf_find_first_image_url(const char *raw_source, char *out_img_url, size_t max_len) {
+    /* 1. Soporte para miniaturas de Wikimedia (//thumb.wikimedia.org/ o //upload.wikimedia.org/) */
+    const char *wiki_img = strstr(raw_source, "//thumb.wikimedia.org/");
+    if (!wiki_img) wiki_img = strstr(raw_source, "//upload.wikimedia.org/");
+    if (wiki_img) {
+        const char *end = wiki_img;
+        while (*end && *end != '"' && *end != '\'' && *end != ' ' && *end != '>' && *end != '?') end++;
+        size_t len = (size_t)(end - wiki_img);
+        if (len > 10 && len + 8 < max_len) {
+            snprintf(out_img_url, max_len, "https:%.*s", (int)len, wiki_img);
+            return 1;
+        }
+    }
+
     const char *p = raw_source;
     while ((p = strstr(p, "https://")) != NULL) {
         const char *end = p;
-        while (*end && *end != '"' && *end != '\'' && *end != ')' && *end != ' ' && *end != '\n' && *end != '>') {
+        while (*end && *end != '"' && *end != '\'' && *end != ')' && *end != ' ' && *end != '\n' && *end != '>' && *end != '?') {
             end++;
         }
         size_t len = (size_t)(end - p);
@@ -99,17 +112,6 @@ static inline int eonsurf_find_first_image_url(const char *raw_source, char *out
             }
         }
         p = end;
-    }
-
-    const char *wiki_img = strstr(raw_source, "//upload.wikimedia.org/");
-    if (wiki_img) {
-        const char *end = wiki_img;
-        while (*end && *end != '"' && *end != '\'' && *end != ' ') end++;
-        size_t len = (size_t)(end - wiki_img);
-        if (len + 7 < max_len && (strncmp(end - 4, ".png", 4) == 0 || strncmp(end - 4, ".jpg", 4) == 0)) {
-            snprintf(out_img_url, max_len, "https:%.*s", (int)len, wiki_img);
-            return 1;
-        }
     }
     return 0;
 }

@@ -38,6 +38,8 @@
 #include <sys/time.h>
 
 float g_measured_fps = 60.0f;
+int g_ram_used_mb = 48;
+int g_settings_menu_open = 0;
 static uint64_t g_last_time_usec = 0;
 static int g_fps_frame_count = 0;
 
@@ -503,6 +505,19 @@ static void navigate_to(const char *input_url)
             }
 
             if (!parsed_ok) {
+                /* Intentar extracción con el nuevo motor de lectura de artículos web limpios */
+                char extracted_title[128] = "";
+                char extracted_body[8192] = "";
+                if (eonsurf_extract_clean_article(chunk.data, chunk.size, extracted_title, sizeof(extracted_title), extracted_body, sizeof(extracted_body))) {
+                    if (strlen(extracted_title) > 0) {
+                        strncpy(page_title, extracted_title, sizeof(page_title) - 1);
+                    }
+                    eonsurf_format_markdown_and_links(extracted_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    parsed_ok = 1;
+                }
+            }
+
+            if (!parsed_ok) {
                 eonsurf_fsm_extract_text_and_links(chunk.data, chunk.size, raw_extracted, sizeof(raw_extracted), page_links, &page_links_count);
                 if (strlen(raw_extracted) > 0) {
                     eonsurf_format_markdown_and_links(raw_extracted, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
@@ -530,6 +545,13 @@ static void navigate_to(const char *input_url)
                 strncpy(g_layout.title, g_infobox_header, sizeof(g_layout.title) - 1);
             }
             strncpy(g_layout.subtitle, target_url, sizeof(g_layout.subtitle) - 1);
+
+            /* Actualizar pestaña actual con los nuevos datos */
+            strncpy(g_tabs[g_current_tab].url, current_url, sizeof(g_tabs[g_current_tab].url) - 1);
+            strncpy(g_tabs[g_current_tab].title, page_title, sizeof(g_tabs[g_current_tab].title) - 1);
+            strncpy(g_tabs[g_current_tab].body, page_body, sizeof(g_tabs[g_current_tab].body) - 1);
+            g_tabs[g_current_tab].scroll_y = 0;
+            g_tabs[g_current_tab].http_code = (int)response_code;
 
             /* Guardar página en la pila de historial con snapshot en RAM */
             eonsurf_history_push(current_url, page_body, 0, (int)response_code, chunk.size);
@@ -647,6 +669,18 @@ int main(void)
             /* 3. Clic con Cruz [X] */
             if (pdata.BTN_CROSS && !prev_btn_cross) {
                 /* A. Clic sobre pestañas superiores o botón '+' */
+                /* Clic en Emblema Hexagonal [ES] para abrir Configuraciones */
+                if (px >= 1180 && px <= 1235 && py >= 58 && py <= 100) {
+                    g_settings_menu_open = !g_settings_menu_open;
+                }
+                /* Clic dentro de las opciones del Menú de Configuración si está abierto */
+                else if (g_settings_menu_open && px >= 880 && px <= 1250 && py >= 110 && py <= 430) {
+                    if (py >= 175 && py <= 198) g_cursor_style = CURSOR_STYLE_CLASSIC_ARROW;
+                    else if (py >= 200 && py <= 223) g_cursor_style = CURSOR_STYLE_NEON_PRECISION;
+                    else if (py >= 225 && py <= 248) g_cursor_style = CURSOR_STYLE_CROSSHAIR;
+                    else if (py >= 345 && py <= 380) g_settings_menu_open = 0;
+                }
+
                 int tab_click = eonsurf_tabs_check_click(px, py);
                 if (tab_click >= 0 && tab_click < MAX_TABS) {
                     /* Guardar estado de la pestaña actual antes de cambiar */
@@ -742,6 +776,18 @@ int main(void)
                 }
             }
             prev_btn_cross = pdata.BTN_CROSS;
+
+            if (pdata.BTN_START && !pdata.BTN_SELECT) {
+                /* Abrir / Cerrar Menú de Configuración EonSurf */
+                static int prev_btn_start = 0;
+                if (!prev_btn_start) {
+                    g_settings_menu_open = !g_settings_menu_open;
+                }
+                prev_btn_start = 1;
+            } else {
+                static int prev_btn_start = 0;
+                prev_btn_start = 0;
+            }
 
             if (pdata.BTN_START && pdata.BTN_SELECT) {
                 running = 0;

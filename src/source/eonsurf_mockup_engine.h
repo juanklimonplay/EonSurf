@@ -430,15 +430,24 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     /* Línea horizontal neón continua que une la pestaña activa */
     eonsurf_draw_tab_baseline_glow(fb, pitch, active_tab_x, tab_w);
 
-    /* Badge Telemetría Cell B.E. + Medidor FPS Dinámico */
+    /* Badge Telemetría Cell B.E. + Medidor RAM XDR / GDDR3 y FPS Dinámico */
     extern float g_measured_fps;
-    char fps_label[32];
-    snprintf(fps_label, sizeof(fps_label), "Cell B.E.  %.1f FPS", (g_measured_fps > 10.0f && g_measured_fps < 120.0f) ? g_measured_fps : 60.0f);
-    eonsurf_draw_glowing_pill(fb, pitch, 1082, 11, 178, 34, 0x101C28, 0x00E5FF);
-    eonsurf_draw_mockup_text(fb, pitch, 1094, 19, 15, fps_label, 0xE8F4FF, 0, 1255);
+    extern int g_ram_used_mb;
+    
+    /* Semáforo de RAM: Verde (< 120MB), Amarillo (120-190MB), Rojo (> 190MB de 256MB) */
+    uint32_t ram_color = 0x38BDF8;
+    if (g_ram_used_mb < 120) ram_color = 0x22C55E;      /* Verde */
+    else if (g_ram_used_mb < 190) ram_color = 0xFACC15; /* Amarillo */
+    else ram_color = 0xEF4444;                          /* Rojo */
+
+    char fps_label[48];
+    snprintf(fps_label, sizeof(fps_label), "RAM %d/256MB  %.1fFPS",
+             g_ram_used_mb, (g_measured_fps > 10.0f && g_measured_fps < 120.0f) ? g_measured_fps : 60.0f);
+    eonsurf_draw_glowing_pill(fb, pitch, 1030, 11, 230, 34, 0x101C28, ram_color);
+    eonsurf_draw_mockup_text(fb, pitch, 1042, 19, 15, fps_label, 0xE8F4FF, 0, 1255);
     for (int dy = -2; dy <= 2; dy++)
         for (int dx = -2; dx <= 2; dx++)
-            mk_blend(fb, pitch, 1173 + dx, 27 + dy, 0x55F0FF, 255);
+            mk_blend(fb, pitch, 1150 + dx, 27 + dy, ram_color, 255);
 
     /* Barra de herramientas con ← → ↻ */
     eonsurf_draw_toolbar_icons(fb, pitch);
@@ -492,18 +501,20 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     /* 4. Dibuja la franja oscura de foco detrás del párrafo donde apunta el cursor */
     eonsurf_draw_paragraph_focus_box(fb, pitch, cursor_y);
 
-    /* 1. Margen superior correcto para el contenido del panel izquierdo (Baja el texto para que no choque arriba) */
-    int cur_x = 88, cur_y = 238;
+    /* 1. Renderizado del cuerpo del documento con scroll_y dinámico y cálculo de altura total */
+    int cur_x = 88;
+    int base_doc_y = 238 - scroll_y;
+    int cur_y = base_doc_y;
     uint32_t cur_col = 0xF4F8FC;
     const char *p = article_body;
     char word[128];
+    int line_h = 26;
 
-    /* 2. Cuerpo del artículo con word-wrap y salto de línea seguro */
-    while (*p && cur_y < 620) {
-        if (*p == '\x01') { cur_col = 0x62B8FF; p++; continue; } /* Enlace celeste */
+    while (*p) {
+        if (*p == '\x01') { cur_col = 0x38BDF8; p++; continue; } /* Enlace azul cian brillante */
         if (*p == '\x02') { cur_col = 0xF4F8FC; p++; continue; } /* Fin enlace */
-        if (*p == '\n')   { cur_x = 88; cur_y += 24; p++; continue; }
-        if (*p == ' ')    { cur_x += 6; p++; continue; }
+        if (*p == '\n')   { cur_x = 88; cur_y += line_h; p++; continue; }
+        if (*p == ' ')    { cur_x += 7; p++; continue; }
 
         int wi = 0;
         while (*p && *p != ' ' && *p != '\n' && *p != '\x01' && *p != '\x02' && wi < 120) {
@@ -514,16 +525,59 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         int est_w = wi * 9;
         if (cur_x + est_w > content_max_x) {
             cur_x = 88;
-            cur_y += 24;
-            if (cur_y >= 620) break;
+            cur_y += line_h;
         }
-        cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
+
+        /* Solo dibujar si la línea cae dentro de la ventana visible del panel (Y: 210 a 625) */
+        if (cur_y >= 210 && cur_y <= 625) {
+            int prev_x = cur_x;
+            cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
+            /* Si es un enlace, dibujar un subrayado sutil debajo */
+            if (cur_col == 0x38BDF8) {
+                for (int lx = prev_x; lx < cur_x; lx++) {
+                    mk_blend(fb, pitch, lx, cur_y + 15, 0x38BDF8, 160);
+                }
+            }
+        } else {
+            cur_x += est_w;
+        }
     }
 
-    /* Barra de scroll vertical integrada a la derecha del panel de lectura */
-    for (int sy = 235; sy < 580; sy++) {
-        mk_blend(fb, pitch, 882, sy, 0x1E2E40, 120);
-        mk_blend(fb, pitch, 883, sy, 0x38BDF8, 160);
+    /* Calcular scroll máximo disponible para este documento */
+    int total_doc_h = cur_y - base_doc_y;
+    int max_s = total_doc_h - 380;
+    if (max_s < 0) max_s = 0;
+    if (out_max_scroll) *out_max_scroll = max_s;
+
+    /* Barra de scroll visual proporcional */
+    int scrollbar_track_h = 345;
+    int scrollbar_y = 235;
+    if (max_s > 0) {
+        int thumb_h = (380 * scrollbar_track_h) / (total_doc_h > 0 ? total_doc_h : 1);
+        if (thumb_h < 24) thumb_h = 24;
+        int thumb_y = scrollbar_y + (scroll_y * (scrollbar_track_h - thumb_h)) / max_s;
+        for (int sy = scrollbar_y; sy < scrollbar_y + scrollbar_track_h; sy++) {
+            mk_blend(fb, pitch, content_max_x + 12, sy, 0x1E2E40, 100);
+        }
+        for (int ty = thumb_y; ty < thumb_y + thumb_h; ty++) {
+            mk_blend(fb, pitch, content_max_x + 12, ty, 0x38BDF8, 220);
+        }
+    }
+
+    /* Menú de Configuración OSD Flotante (al presionar START o clic en emblema ES) */
+    extern int g_settings_menu_open;
+    if (g_settings_menu_open) {
+        eonsurf_draw_glass_panel(fb, pitch, 880, 110, 370, 320, 12, 0x16202C, 0x0A0F16, 0x00E5FF, 245);
+        eonsurf_draw_mockup_text(fb, pitch, 900, 125, 20, "Configuracion EonSurf", 0x38BDF8, 1, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 900, 160, 15, "Estilo de Cursor:", 0xFFFFFF, 0, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 920, 185, 14, "[X] 1. Flecha Clasica (OS)", (g_cursor_style == 0) ? 0x22C55E : 0x8899AA, 0, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 920, 210, 14, "[X] 2. Neon Cyan Precision", (g_cursor_style == 1) ? 0x22C55E : 0x8899AA, 0, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 920, 235, 14, "[X] 3. Cruz Tactica (Reticle)", (g_cursor_style == 2) ? 0x22C55E : 0x8899AA, 0, 1230);
+
+        eonsurf_draw_mockup_text(fb, pitch, 900, 270, 15, "Motor de Red:", 0xFFFFFF, 0, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 920, 295, 14, "Caché en RAM: Activa (16 slots)", 0x48D8FF, 0, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 920, 320, 14, "User-Agent: PlayStation 3 / Desktop", 0x48D8FF, 0, 1230);
+        eonsurf_draw_mockup_text(fb, pitch, 920, 355, 13, "Presiona START o (O) para cerrar", 0xCBD5E1, 0, 1230);
     }
 
     /* Dock Inferior Translúcido con los 5 controles oficiales */
