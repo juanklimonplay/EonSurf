@@ -39,6 +39,34 @@ static inline void eonsurf_format_markdown_and_links(const char *src, char *dst,
             continue;
         }
 
+        /* 0.1 Detectar Bloques de Código (``` o `) */
+        if (src[si] == '`') {
+            if (src[si + 1] == '`' && src[si + 2] == '`') {
+                si += 3;
+                if (di > 0 && dst[di - 1] != '\n') dst[di++] = '\n';
+                dst[di++] = '['; dst[di++] = 'C'; dst[di++] = 'O'; dst[di++] = 'D'; dst[di++] = 'E'; dst[di++] = ']';
+                dst[di++] = ' ';
+                continue;
+            }
+        }
+
+        /* 0.2 Detectar Citas / Blockquotes (> ) */
+        if ((si == 0 || src[si - 1] == '\n') && src[si] == '>' && src[si + 1] == ' ') {
+            si += 2;
+            if (di > 0 && dst[di - 1] != '\n') dst[di++] = '\n';
+            dst[di++] = '|'; dst[di++] = ' ';
+            continue;
+        }
+
+        /* 0.3 Detectar Separadores Horizontales (--- o ***) */
+        if ((si == 0 || src[si - 1] == '\n') && src[si] == '-' && src[si + 1] == '-' && src[si + 2] == '-') {
+            si += 3;
+            if (di > 0 && dst[di - 1] != '\n') dst[di++] = '\n';
+            for (int hri = 0; hri < 32 && di + 2 < dst_max; hri++) dst[di++] = '-';
+            dst[di++] = '\n';
+            continue;
+        }
+
         /* 1. Detectar títulos Markdown (## o ###) en medio de una línea y bajar de renglón */
         if (si > 0 && (src[si - 1] == ' ' || src[si - 1] == '\n') && src[si] == '#' && (src[si + 1] == '#' || src[si + 1] == ' ')) {
             if (di > 0 && dst[di - 1] != '\n') dst[di++] = '\n';

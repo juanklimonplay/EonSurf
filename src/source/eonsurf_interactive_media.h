@@ -12,8 +12,8 @@
 #define MAX_PAGE_LINKS 128
 
 /* Estado global de enlaces e imagen de la pestaña activa */
-static EonCleanLink g_links[MAX_PAGE_LINKS];
-static int g_link_count = 0;
+extern EonCleanLink g_links[MAX_PAGE_LINKS];
+extern int g_link_count;
 
 static uint32_t *g_infobox_tex = NULL;
 static int g_infobox_w = 0;

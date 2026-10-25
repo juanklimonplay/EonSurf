@@ -37,7 +37,16 @@
 #include "eonsurf_modern_ui.h"
 #include "eonsurf_net_bypass.h"
 #include "eonsurf_ps3_ergonomics.h"
+#include "eonsurf_bookmarks.h"
+#include "eonsurf_net_progress.h"
+#include "eonsurf_spatial_nav.h"
+#include "eonsurf_file_explorer.h"
+#include "eonsurf_media_player.h"
+#include "eonsurf_page_search.h"
 #include <sys/time.h>
+
+EonCleanLink g_links[MAX_PAGE_LINKS];
+int g_link_count = 0;
 
 float g_measured_fps = 60.0f;
 int g_ram_used_mb = 48;
@@ -469,6 +478,25 @@ static void navigate_to(const char *input_url)
     page_links_count = 0;
     scroll_y = 0;
 
+    /* 0. Intercepcion de explorador de archivos local file:/// */
+    if (strncmp(target_url, "file://", 7) == 0) {
+        snprintf(page_title, sizeof(page_title), "Explorador: %s", target_url);
+        static char local_dir_md[16384];
+        if (eonsurf_generate_local_directory_listing(target_url, local_dir_md, sizeof(local_dir_md))) {
+            eonsurf_format_markdown_and_links(local_dir_md, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+        } else {
+            snprintf(page_body, sizeof(page_body), "No se pudo acceder al directorio local %s", target_url);
+        }
+        eonsurf_update_dynamic_infobox("file:///local", NULL, 0, 200, g_link_count);
+        strncpy(g_tabs[g_current_tab].url, current_url, sizeof(g_tabs[g_current_tab].url) - 1);
+        strncpy(g_tabs[g_current_tab].title, page_title, sizeof(g_tabs[g_current_tab].title) - 1);
+        strncpy(g_tabs[g_current_tab].body, page_body, sizeof(g_tabs[g_current_tab].body) - 1);
+        g_tabs[g_current_tab].scroll_y = 0;
+        g_tabs[g_current_tab].http_code = 200;
+        eonsurf_history_push(current_url, page_body, 0, 200, strlen(page_body));
+        return;
+    }
+
     /* 1. Intercepcion local instantanea de eonsurf://portal y eonsurf://home (Cero Red) */
     if (strncmp(target_url, "eonsurf://", 10) == 0) {
         snprintf(page_title, sizeof(page_title), "Portal EonSurf");
@@ -499,6 +527,9 @@ static void navigate_to(const char *input_url)
         curl_easy_setopt(curl, CURLOPT_URL, target_url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, http_write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, eonsurf_curl_progress_cb);
+        curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
         struct curl_slist *stealth_hdrs = eonsurf_apply_stealth_browser_headers(curl);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
@@ -589,6 +620,8 @@ static void navigate_to(const char *input_url)
 
             /* Guardar página en la pila de historial con snapshot en RAM */
             eonsurf_history_push(current_url, page_body, 0, (int)response_code, chunk.size);
+            eonsurf_history_log_visit(page_title, current_url);
+            g_load_percent = 100.0f;
         } else {
             snprintf(page_title, sizeof(page_title), "Error de conexion (%d)", (int)res);
             snprintf(page_body, sizeof(page_body), "No se pudo obtener respuesta de %s: %s", target_url, curl_easy_strerror(res));
@@ -614,6 +647,7 @@ int main(void)
     sysUtilRegisterCallback(SYSUTIL_EVENT_SLOT0, on_sysutil, NULL);
     init_screen();
     init_default_layout();
+    eonsurf_bookmarks_init();
     ioPadInit(7);
 
     if (netInitialize() == 0) {
@@ -671,6 +705,49 @@ int main(void)
             if (abs(ry) > 16) {
                 scroll_y += ry / 5;
             }
+            
+            /* Cambio rápido de pestaña con L1 / R1 */
+            static int prev_btn_l1 = 0;
+            static int prev_btn_r1 = 0;
+            if (pdata.BTN_L1 && !prev_btn_l1) {
+                int prev_tab = (g_current_tab - 1 + MAX_TABS) % MAX_TABS;
+                while (!g_tabs[prev_tab].active && prev_tab != g_current_tab) {
+                    prev_tab = (prev_tab - 1 + MAX_TABS) % MAX_TABS;
+                }
+                if (g_tabs[prev_tab].active) {
+                    strncpy(g_tabs[g_current_tab].url, current_url, sizeof(g_tabs[g_current_tab].url) - 1);
+                    strncpy(g_tabs[g_current_tab].title, page_title, sizeof(g_tabs[g_current_tab].title) - 1);
+                    strncpy(g_tabs[g_current_tab].body, page_body, sizeof(g_tabs[g_current_tab].body) - 1);
+                    g_tabs[g_current_tab].scroll_y = scroll_y;
+
+                    eonsurf_tab_select(prev_tab);
+                    strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
+                    strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
+                    strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
+                    scroll_y = g_tabs[g_current_tab].scroll_y;
+                }
+            }
+            if (pdata.BTN_R1 && !prev_btn_r1) {
+                int next_tab = (g_current_tab + 1) % MAX_TABS;
+                while (!g_tabs[next_tab].active && next_tab != g_current_tab) {
+                    next_tab = (next_tab + 1) % MAX_TABS;
+                }
+                if (g_tabs[next_tab].active) {
+                    strncpy(g_tabs[g_current_tab].url, current_url, sizeof(g_tabs[g_current_tab].url) - 1);
+                    strncpy(g_tabs[g_current_tab].title, page_title, sizeof(g_tabs[g_current_tab].title) - 1);
+                    strncpy(g_tabs[g_current_tab].body, page_body, sizeof(g_tabs[g_current_tab].body) - 1);
+                    g_tabs[g_current_tab].scroll_y = scroll_y;
+
+                    eonsurf_tab_select(next_tab);
+                    strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
+                    strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
+                    strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
+                    scroll_y = g_tabs[g_current_tab].scroll_y;
+                }
+            }
+            prev_btn_l1 = pdata.BTN_L1;
+            prev_btn_r1 = pdata.BTN_R1;
+
             if (pdata.BTN_L1) scroll_y -= 16;
             if (pdata.BTN_R1) scroll_y += 16;
             if (pdata.BTN_L2) scroll_y -= 28;
@@ -708,7 +785,12 @@ int main(void)
                     scroll_y = restored_scroll;
                     snprintf(page_title, sizeof(page_title), "%s", current_url);
                     /* Re-extraer enlaces y telemetria al instante sin usar red */
-                    eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    {
+                        char temp_body[8192];
+                        strncpy(temp_body, page_body, sizeof(temp_body) - 1);
+                        temp_body[sizeof(temp_body) - 1] = '\0';
+                        eonsurf_format_markdown_and_links(temp_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    }
                     eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                 }
             }
@@ -723,7 +805,12 @@ int main(void)
                 if (eonsurf_history_go_forward(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
                     scroll_y = restored_scroll;
                     snprintf(page_title, sizeof(page_title), "%s", current_url);
-                    eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    {
+                        char temp_body[8192];
+                        strncpy(temp_body, page_body, sizeof(temp_body) - 1);
+                        temp_body[sizeof(temp_body) - 1] = '\0';
+                        eonsurf_format_markdown_and_links(temp_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    }
                     eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                 }
             }
@@ -737,24 +824,31 @@ int main(void)
                     g_settings_menu_open = !g_settings_menu_open;
                 }
                 /* Clic dentro de las opciones del Centro de Control EonSurf si está abierto */
-                else if (g_settings_menu_open && px >= 820 && px <= 1250 && py >= 105 && py <= 500) {
-                    if (px >= 835 && px <= 1235 && py >= 175 && py <= 209) {
+                else if (g_settings_menu_open && px >= 820 && px <= 1260 && py >= 105 && py <= 520) {
+                    if (py >= 170 && py <= 195) {
                         /* Opción 1: Alternar barra lateral */
                         g_sidebar_visible = !g_sidebar_visible;
-                    } else if (px >= 835 && px <= 1235 && py >= 215 && py <= 249) {
+                    } else if (py >= 196 && py <= 220) {
                         /* Opción 2: Alternar dock inferior */
                         g_dock_visible = !g_dock_visible;
-                    } else if (px >= 835 && px <= 1235 && py >= 255 && py <= 289) {
-                        /* Opción 3: Alternar estilo de puntero */
-                        g_cursor_style = (g_cursor_style + 1) % 3;
-                    } else if (px >= 835 && px <= 1235 && py >= 295 && py <= 329) {
-                        /* Opción 4: Resetear zoom y scroll */
-                        scroll_y = 0;
-                    } else if (px >= 835 && px <= 1235 && py >= 335 && py <= 369) {
-                        /* Opción 5: Ir al Portal de Inicio */
+                    } else if (py >= 245 && py <= 268) {
+                        /* Opción 3: Portal de Inicio */
                         navigate_to("eonsurf://portal");
                         g_settings_menu_open = 0;
-                    } else if (py >= 435 && py <= 470) {
+                    } else if (py >= 269 && py <= 290) {
+                        /* Opción 4: Explorador local HDD */
+                        navigate_to("file:///dev_hdd0/");
+                        g_settings_menu_open = 0;
+                    } else if (py >= 291 && py <= 318) {
+                        /* Opción 5: Añadir a marcadores */
+                        eonsurf_bookmark_add(page_title, current_url);
+                    } else if (py >= 340 && py <= 368) {
+                        /* Opción 6: Música ambiental */
+                        eonsurf_toggle_background_music();
+                    } else if (py >= 390 && py <= 420) {
+                        /* Opción 7: Estilo de puntero */
+                        g_cursor_style = (g_cursor_style + 1) % 3;
+                    } else if (py >= 430) {
                         g_settings_menu_open = 0;
                     }
                 }
@@ -802,7 +896,12 @@ int main(void)
                     if (eonsurf_history_go_back(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
                         scroll_y = restored_scroll;
                         snprintf(page_title, sizeof(page_title), "%s", current_url);
-                        eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                        {
+                        char temp_body[8192];
+                        strncpy(temp_body, page_body, sizeof(temp_body) - 1);
+                        temp_body[sizeof(temp_body) - 1] = '\0';
+                        eonsurf_format_markdown_and_links(temp_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    }
                         eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                     }
                 } else if (nav_click == 1) {
@@ -811,7 +910,12 @@ int main(void)
                     if (eonsurf_history_go_forward(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
                         scroll_y = restored_scroll;
                         snprintf(page_title, sizeof(page_title), "%s", current_url);
-                        eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                        {
+                        char temp_body[8192];
+                        strncpy(temp_body, page_body, sizeof(temp_body) - 1);
+                        temp_body[sizeof(temp_body) - 1] = '\0';
+                        eonsurf_format_markdown_and_links(temp_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    }
                         eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                     }
                 } else if (nav_click == 2) {

@@ -42,6 +42,7 @@ static inline void eonsurf_draw_hex_es_emblem(uint32_t *fb, int pitch, int cx, i
     uint32_t glow_col  = is_hover ? 0x00E5FF : 0x0284C7;
     uint32_t core_col  = is_hover ? 0x0A263D : 0x071524;
     uint32_t spark_col = is_hover ? 0xFFFFFF : 0x67E8F9;
+    uint32_t accent_col = is_hover ? 0x38BDF8 : 0x00E5FF;
 
     for (int dy = -r - 4; dy <= r + 4; dy++) {
         for (int dx = -r - 4; dx <= r + 4; dx++) {
@@ -50,7 +51,7 @@ static inline void eonsurf_draw_hex_es_emblem(uint32_t *fb, int pitch, int cx, i
             /* Aura difusa / Glow pulsante */
             if (dist > (float)r && dist <= (float)(r + 4)) {
                 float t = (float)(r + 4 - dist) / 4.0f;
-                int alpha = (int)(t * (is_hover ? 180.0f : 85.0f));
+                int alpha = (int)(t * (is_hover ? 200.0f : 90.0f));
                 mk_blend(fb, pitch, cx + dx, cy + dy, glow_col, alpha);
             }
             /* Anillo exterior cromado Sci-Fi */
@@ -64,29 +65,45 @@ static inline void eonsurf_draw_hex_es_emblem(uint32_t *fb, int pitch, int cx, i
         }
     }
 
-    /* Símbolo central 'E' estilizado futurista y dinámico (sin fuentes toscas) */
-    for (int dy = -10; dy <= 10; dy++) {
-        /* Barra vertical izquierda */
-        for (int dx = -7; dx <= -4; dx++) {
-            mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+    /* Letra 'E' estilizada a la izquierda (cx - 9 a cx - 1) */
+    for (int dy = -9; dy <= 9; dy++) {
+        /* Columna vertical E */
+        for (int dx = -9; dx <= -7; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+        /* Barra superior E */
+        if (dy >= -9 && dy <= -7) {
+            for (int dx = -7; dx <= -1; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
         }
-        /* Barra superior horizontal */
-        if (dy >= -10 && dy <= -7) {
-            for (int dx = -4; dx <= 8; dx++) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
-            }
+        /* Barra media E con tono acento */
+        if (dy >= -1 && dy <= 1) {
+            for (int dx = -7; dx <= -3; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, accent_col, 255);
         }
-        /* Barra media horizontal con corte cian */
-        if (dy >= -2 && dy <= 1) {
-            for (int dx = -4; dx <= 5; dx++) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, is_hover ? 0x38BDF8 : 0x00E5FF, 255);
-            }
+        /* Barra inferior E */
+        if (dy >= 7 && dy <= 9) {
+            for (int dx = -7; dx <= -1; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
         }
-        /* Barra inferior horizontal */
-        if (dy >= 7 && dy <= 10) {
-            for (int dx = -4; dx <= 8; dx++) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
-            }
+    }
+
+    /* Letra 'S' estilizada a la derecha (cx + 2 a cx + 10) */
+    for (int dy = -9; dy <= 9; dy++) {
+        /* Barra superior S */
+        if (dy >= -9 && dy <= -7) {
+            for (int dx = 2; dx <= 9; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+        }
+        /* Columna superior izquierda S */
+        if (dy >= -7 && dy <= -1) {
+            for (int dx = 2; dx <= 4; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+        }
+        /* Barra media S */
+        if (dy >= -1 && dy <= 1) {
+            for (int dx = 2; dx <= 9; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, accent_col, 255);
+        }
+        /* Columna inferior derecha S */
+        if (dy >= 1 && dy <= 7) {
+            for (int dx = 7; dx <= 9; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
+        }
+        /* Barra inferior S */
+        if (dy >= 7 && dy <= 9) {
+            for (int dx = 2; dx <= 9; dx++) mk_blend(fb, pitch, cx + dx, cy + dy, spark_col, 255);
         }
     }
 }

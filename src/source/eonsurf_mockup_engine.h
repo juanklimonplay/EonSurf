@@ -455,6 +455,21 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_https_padlock(fb, pitch, 202, 71);
     eonsurf_draw_mockup_text(fb, pitch, 228, 69, 18, current_url, 0xF0F6FC, 0, 1140);
 
+    /* Barra superior de progreso de red en tiempo real (Neón Cian) */
+    extern float g_load_percent;
+    extern int g_net_loading;
+    if (g_net_loading && g_load_percent > 0.0f) {
+        int bar_w = (int)((1140 - 192) * (g_load_percent / 100.0f));
+        if (bar_w > 948) bar_w = 948;
+        if (bar_w < 6) bar_w = 6;
+        for (int py = 98; py <= 101; py++) {
+            for (int px = 192; px < 192 + bar_w; px++) {
+                mk_blend(fb, pitch, px, py, 0x00E5FF, 230);
+            }
+        }
+    }
+
+
     /* 3. Emblema Hexagonal Neón [ES] EonSurf a la derecha */
     int is_es_hover = (cursor_x >= 1180 && cursor_x <= 1235 && cursor_y >= 58 && cursor_y <= 100);
     eonsurf_draw_hex_es_emblem(fb, pitch, 1205, 79, is_es_hover);
@@ -589,27 +604,35 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         }
     }
 
-    /* Menú de Configuración OSD Flotante (al presionar START o clic en emblema ES) */
+        /* Menú de Configuración OSD Flotante (al presionar START o clic en emblema ES) */
     extern int g_settings_menu_open;
     if (g_settings_menu_open) {
-        eonsurf_draw_glass_panel(fb, pitch, 850, 110, 410, 380, 14, 0x0F172A, 0x020617, 0x00E5FF, 250);
-        eonsurf_draw_mockup_text(fb, pitch, 875, 125, 20, "Centro de Control EonSurf", 0x38BDF8, 1, 1240);
-        
-        /* Opciones de Interfaz */
-        eonsurf_draw_mockup_text(fb, pitch, 875, 160, 15, "Interfaz y Visualizacion:", 0xFFFFFF, 1, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 895, 185, 14, g_sidebar_visible ? "[X] Barra Lateral: Visible" : "[ ] Barra Lateral: Oculta (Lienzo 100%)", g_sidebar_visible ? 0x22C55E : 0x94A3B8, 0, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 895, 210, 14, g_dock_visible ? "[X] Dock Inferior: Activo" : "[ ] Dock Inferior: Oculto", g_dock_visible ? 0x22C55E : 0x94A3B8, 0, 1240);
+        eonsurf_draw_glass_panel(fb, pitch, 820, 105, 440, 440, 14, 0x0F172A, 0x020617, 0x00E5FF, 250);
+        eonsurf_draw_mockup_text(fb, pitch, 845, 122, 20, "Centro de Control EonSurf", 0x38BDF8, 1, 1240);
 
-        /* Opciones de Cursor */
-        eonsurf_draw_mockup_text(fb, pitch, 875, 245, 15, "Estilo de Cursor:", 0xFFFFFF, 1, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 895, 270, 14, (g_cursor_style == 0) ? "[*] 1. Flecha Clasica (OS)" : "    1. Flecha Clasica (OS)", (g_cursor_style == 0) ? 0x38BDF8 : 0x94A3B8, 0, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 895, 295, 14, (g_cursor_style == 1) ? "[*] 2. Neon Cyan Precision" : "    2. Neon Cyan Precision", (g_cursor_style == 1) ? 0x38BDF8 : 0x94A3B8, 0, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 895, 320, 14, (g_cursor_style == 2) ? "[*] 3. Cruz Tactica (Reticle)" : "    3. Cruz Tactica (Reticle)", (g_cursor_style == 2) ? 0x38BDF8 : 0x94A3B8, 0, 1240);
+        /* Opciones de Interfaz */
+        eonsurf_draw_mockup_text(fb, pitch, 845, 155, 15, "Interfaz y Visualizacion:", 0xFFFFFF, 1, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 178, 14, g_sidebar_visible ? "[X] Barra Lateral: Visible" : "[ ] Barra Lateral: Oculta (Lienzo 100%)", g_sidebar_visible ? 0x22C55E : 0x94A3B8, 0, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 200, 14, g_dock_visible ? "[X] Dock Inferior: Activo" : "[ ] Dock Inferior: Oculto", g_dock_visible ? 0x22C55E : 0x94A3B8, 0, 1240);
+
+        /* Acceso Rápido y Navegación */
+        eonsurf_draw_mockup_text(fb, pitch, 845, 230, 15, "Accesos Rapidos y Herramientas:", 0xFFFFFF, 1, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 252, 14, "-> 1. Portal de Inicio (eonsurf://portal)", 0x38BDF8, 0, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 274, 14, "-> 2. Explorador de Disco (file:///dev_hdd0/)", 0x38BDF8, 0, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 296, 14, "-> 3. Guardar Pagina Actual en Marcadores", 0xFACC15, 0, 1240);
+
+        /* Multimedia y Sonido */
+        extern int g_music_playing;
+        eonsurf_draw_mockup_text(fb, pitch, 845, 326, 15, "Musica y Ambiente:", 0xFFFFFF, 1, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 348, 14, g_music_playing ? "[>] Audio Ambiente: Reproduciendo" : "[ ] Audio Ambiente: En Pausa", g_music_playing ? 0x22C55E : 0x94A3B8, 0, 1240);
+
+        /* Puntero */
+        eonsurf_draw_mockup_text(fb, pitch, 845, 376, 15, "Estilo de Puntero:", 0xFFFFFF, 1, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 865, 398, 14, (g_cursor_style == 0) ? "[*] Flecha Clasica OS" : (g_cursor_style == 1 ? "[*] Neon Cyan Precision" : "[*] Reticula Tactica"), 0x38BDF8, 0, 1240);
 
         /* Atajos Rápidos */
-        eonsurf_draw_mockup_text(fb, pitch, 875, 355, 14, "Atajo Cuadrado: Ocultar/Ver Barra Lateral", 0xCBD5E1, 0, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 875, 380, 14, "Atajo SELECT: Ocultar/Ver Dock Inferior", 0xCBD5E1, 0, 1240);
-        eonsurf_draw_mockup_text(fb, pitch, 895, 415, 13, "Presiona START o Circulo (O) para cerrar", 0x38BDF8, 1, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 845, 435, 13, "L1/R1: Cambiar Pestanas | START / O: Cerrar Menu", 0x94A3B8, 0, 1240);
+        eonsurf_draw_mockup_text(fb, pitch, 845, 458, 12, "EonSurf v0.3.1 | Created by JuAnKLiMoN | 2006-2026", 0x38BDF8, 1, 1240);
     }
 
     extern int g_dock_visible;

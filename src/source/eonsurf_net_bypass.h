@@ -28,6 +28,7 @@ static const char *EONSURF_PORTAL_MARKDOWN =
 static inline void eonsurf_build_search_url_fixed(const char *user_input, char *out_url, size_t max_len) {
     if (strncmp(user_input, "http://", 7) == 0 ||
         strncmp(user_input, "https://", 8) == 0 ||
+        strncmp(user_input, "file://", 7) == 0 ||
         strncmp(user_input, "eonsurf://", 10) == 0) {
         strncpy(out_url, user_input, max_len - 1);
         out_url[max_len - 1] = '\0';
