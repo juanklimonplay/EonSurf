@@ -593,3 +593,26 @@ En respuesta a las pruebas de campo en emulador y consola real, se ha transforma
 
 4. **Telemetría y Medición de FPS en Tiempo Real:**
    - Cálculo por delta de microsegundos mediante gettimeofday() en cada ráfaga de 30 fotogramas, reemplazando la etiqueta fija por la tasa real de refresco del PPU.
+
+---
+
+## 24. Semaforo Dinamico de Memoria RAM (256 MB), Scroll Suave e Interfaz de Ajustes OSD
+
+1. **Semaforo y Medidor de RAM en Tiempo Real:**
+   - Visualizacion superior: `RAM X/256MB - 60.0FPS`.
+   - **Verde neon (`0x22C55E`):** Consumo optimo (< 120 MB).
+   - **Amarillo advertencia (`0xFACC15`):** Consumo medio (120-190 MB).
+   - **Rojo critico (`0xEF4444`):** Limite del silicio de la PS3 (> 190 MB de 256 MB XDR), alertando al usuario antes de cualquier condicion OOM.
+
+2. **Scroll Vertical Proporcional y Subrayado de Hipertexto:**
+   - La cruceta (D-Pad Arriba/Abajo) y el Stick Derecho mueven la pagina verticalmente con recorte estricto dentro de la ventana de lectura.
+   - Los hipervinculos se resaltan en **azul cian brillante (`0x38BDF8`)** con linea de subrayado visual interactiva.
+
+3. **Menu de Configuracion OSD Flotante (Boton START o Clic en Emblema `[ES]`):**
+   - Panel Dark Glass conmutador con acceso directo a:
+     - Seleccion de 3 estilos de cursor en caliente (Flecha Clasica OS, Neon Cyan, Cruz Tactica).
+     - Estado de la cache en RAM (16 slots).
+     - Identificador User-Agent de navegacion.
+
+4. **Extractor de Miniaturas de Wikimedia y Encabezados de Articulos:**
+   - Soporte nativo para dominios `thumb.wikimedia.org` y `upload.wikimedia.org` decodificando imagenes fotograficas reales en el RSX.
