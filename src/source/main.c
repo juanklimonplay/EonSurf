@@ -31,6 +31,9 @@
 #include "eonsurf_dynamic_web.h"
 #include "eonsurf_history.h"
 #include "eonsurf_downloader.h"
+#include "eonsurf_tabs.h"
+#include "eonsurf_cursor.h"
+#include "eonsurf_article_extractor.h"
 #include "eonsurf_modern_ui.h"
 #include <sys/time.h>
 
