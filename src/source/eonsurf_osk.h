@@ -127,7 +127,7 @@ static inline int eonsurf_osk_open(const char *prompt_title, const char *initial
     oskSetKeyLayoutOption(OSK_10KEY_PANEL | OSK_FULLKEY_PANEL);
     /* Permitir entrada directa tanto de mando DualShock 3 como de teclado fisico USB / PC */
     oskSetKeyLayoutOption(OSK_10KEY_PANEL | OSK_FULLKEY_PANEL);
-    oskSetInitialInputDevice(OSK_DEVICE_KEYBOARD);
+    oskSetInitialInputDevice(OSK_DEVICE_KB);
 
     if (oskLoadAsync(g_osk_container, &g_osk_param, &g_osk_field) == 0) {
         g_osk_state = EON_OSK_ACTIVE;
