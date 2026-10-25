@@ -285,26 +285,47 @@ static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y
 }
 
 static inline void eonsurf_draw_toolbar_icons(uint32_t *fb, int pitch) {
+    /* Botón Atrás (←) Cian neón */
     for (int i = -9; i <= 9; i++) {
-        mk_blend(fb, pitch, 76 + i, 38, 0x35E8C8, 255);
-        mk_blend(fb, pitch, 76 + i, 39, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 42 + i, 78, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 42 + i, 79, 0x35E8C8, 255);
     }
     for (int i = 0; i <= 7; i++) {
-        mk_blend(fb, pitch, 67 + i, 38 - i, 0x35E8C8, 255);
-        mk_blend(fb, pitch, 68 + i, 38 - i, 0x35E8C8, 255);
-        mk_blend(fb, pitch, 67 + i, 38 + i, 0x35E8C8, 255);
-        mk_blend(fb, pitch, 68 + i, 38 + i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 33 + i, 78 - i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 34 + i, 78 - i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 33 + i, 78 + i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 34 + i, 78 + i, 0x35E8C8, 255);
     }
 
+    /* Botón Adelante (→) Cian neón */
     for (int i = -9; i <= 9; i++) {
-        mk_blend(fb, pitch, 134 + i, 38, 0x6C8298, 255);
-        mk_blend(fb, pitch, 134 + i, 39, 0x6C8298, 255);
+        mk_blend(fb, pitch, 92 + i, 78, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 92 + i, 79, 0x35E8C8, 255);
     }
     for (int i = 0; i <= 7; i++) {
-        mk_blend(fb, pitch, 143 - i, 38 - i, 0x6C8298, 255);
-        mk_blend(fb, pitch, 142 - i, 38 - i, 0x6C8298, 255);
-        mk_blend(fb, pitch, 143 - i, 38 + i, 0x6C8298, 255);
-        mk_blend(fb, pitch, 142 - i, 38 + i, 0x6C8298, 255);
+        mk_blend(fb, pitch, 101 - i, 78 - i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 100 - i, 78 - i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 101 - i, 78 + i, 0x35E8C8, 255);
+        mk_blend(fb, pitch, 100 - i, 78 + i, 0x35E8C8, 255);
+    }
+
+    /* Botón Recargar (↻) Flecha circular neón */
+    int rcx = 142, rcy = 78, rr = 9;
+    for (int dy = -rr; dy <= rr; dy++) {
+        for (int dx = -rr; dx <= rr; dx++) {
+            float dist = sqrtf((float)(dx * dx + dy * dy));
+            if (dist >= rr - 1.8f && dist <= rr + 0.4f) {
+                /* Abertura en el cuadrante superior derecho */
+                if (!(dx > 1 && dy < -1)) {
+                    mk_blend(fb, pitch, rcx + dx, rcy + dy, 0x35E8C8, 255);
+                }
+            }
+        }
+    }
+    /* Punta de la flecha de recarga */
+    for (int k = 0; k <= 5; k++) {
+        mk_blend(fb, pitch, rcx + 5 - k, rcy - 10 + k, 0x35E8C8, 255);
+        mk_blend(fb, pitch, rcx + 5 - k, rcy - 10 - k, 0x35E8C8, 255);
     }
 }
 
@@ -386,15 +407,18 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     memcpy(fb, g_mockup_bg_cache, 1280 * 720 * sizeof(uint32_t));
 
     /* Pestañas superiores estilo Chrome */
-    eonsurf_draw_chrome_tab(fb, pitch, 48,  8, 240, 42, "EonSurf", 0, 0);
-    /* 1. Dibuja el globo 🌐 en la Pestaña 1 ("EonSurf") */
-    eonsurf_draw_globe_icon(fb, pitch, 72, 28);
+    /* Pestaña 1 (Activa con Glow Neón envolvente) */
+    eonsurf_draw_chrome_tab(fb, pitch, 48,  8, 270, 42, "EonSurf Portal", 1, 0);
+    eonsurf_draw_mockup_text(fb, pitch, 62, 20, 16, "1", 0x8899AA, 0, 80);
+    eonsurf_draw_globe_icon(fb, pitch, 88, 28);
 
-    eonsurf_draw_chrome_tab(fb, pitch, 296, 8, 280, 42, "PlayStation 3 - Wikipedia", 1, 1);
-    eonsurf_draw_mockup_text(fb, pitch, 588, 17, 22, "+", 0x90A4B8, 0, 620);
+    /* Pestaña 2 (Inactiva con [W] Wikipedia) */
+    eonsurf_draw_chrome_tab(fb, pitch, 326, 8, 270, 42, "Wikipedia - Cell B.E.", 0, 1);
+    eonsurf_draw_mockup_text(fb, pitch, 340, 20, 16, "2", 0x667788, 0, 360);
+    eonsurf_draw_mockup_text(fb, pitch, 608, 17, 22, "+", 0x90A4B8, 0, 640);
 
-    /* 2. Une la pestaña activa con la línea horizontal brillante de punta a punta */
-    eonsurf_draw_tab_baseline_glow(fb, pitch, 296, 280);
+    /* 2. Línea horizontal neón continua que une la pestaña activa */
+    eonsurf_draw_tab_baseline_glow(fb, pitch, 48, 270);
 
     /* Badge "Cell B.E. • 60 FPS" */
     eonsurf_draw_glowing_pill(fb, pitch, 1082, 11, 178, 34, 0x101C28, 0x00E5FF);
@@ -403,50 +427,63 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         for (int dx = -2; dx <= 2; dx++)
             mk_blend(fb, pitch, 1173 + dx, 27 + dy, 0x55F0FF, 255);
 
-    /* Barra de herramientas */
+    /* Barra de herramientas con ← → ↻ */
     eonsurf_draw_toolbar_icons(fb, pitch);
-    eonsurf_draw_glowing_pill(fb, pitch, 200, 58, 860, 42, 0x0E1824, 0x20D8FF);
-    eonsurf_draw_https_padlock(fb, pitch, 218, 71);
-    eonsurf_draw_mockup_text(fb, pitch, 242, 69, 18, current_url, 0xF0F6FC, 0, 1040);
+    eonsurf_draw_glowing_pill(fb, pitch, 182, 58, 970, 42, 0x0E1824, 0x20D8FF);
+    eonsurf_draw_https_padlock(fb, pitch, 202, 71);
+    eonsurf_draw_mockup_text(fb, pitch, 228, 69, 18, current_url, 0xF0F6FC, 0, 1140);
 
-    /* 3. Dibuja el emblema azul estilo PlayStation a la derecha de la barra de URL */
-    eonsurf_draw_ps_emblem(fb, pitch, 1032, 79);
+    /* 3. Emblema Hexagonal Neón [ES] EonSurf a la derecha */
+    eonsurf_draw_hex_es_emblem(fb, pitch, 1205, 79);
 
-    /* Título H1 a 34px sobre el panel */
-    eonsurf_draw_mockup_text(fb, pitch, 68, 126, 34, article_title, 0xFFFFFF, 1, 880);
-    eonsurf_draw_mockup_text(fb, pitch, 72, 175, 14, "From Wikipedia, the free encyclopedia", 0x223040, 0, 600);
+    /* Título H1 a 34px sobre el panel de lectura */
+    const char *display_title = (strstr(current_url, "eonsurf://") != NULL) ? "EonSurf Browser" : article_title;
+    eonsurf_draw_mockup_text(fb, pitch, 88, 142, 34, display_title, 0xFFFFFF, 1, 870);
 
-    /* Columna Derecha (30% Infobox) */
+    /* Columna Derecha (30% Infobox Dark Glass) */
     eonsurf_draw_glass_panel(fb, pitch, 908, 120, 332, 525, 10, 0xFF1E2938, 0xFF111822, 0xFF0284C7, 240);
-    eonsurf_draw_mockup_text(fb, pitch, 924, 130, 20, article_title, 0x00FFFFFF, 0, 1220);
-
-    int img_box_y = 168;
-    int img_box_h = 130;
+    
+    int img_box_y = 138;
+    int img_box_h = 160;
     rect_rounded(922, img_box_y, 304, img_box_h, 6, 0x000b0f17);
 
-    if (g_layout.infobox_rgba_tex && g_layout.img_w > 0 && g_layout.img_h > 0) {
+    if (strstr(current_url, "eonsurf://") != NULL || (!g_layout.infobox_rgba_tex)) {
+        /* Renderizado del chip 3D isométrico sci-fi */
+        eonsurf_draw_isometric_chip(fb, pitch, 1074, img_box_y + 80);
+        eonsurf_draw_mockup_text(fb, pitch, 988, 316, 22, "EonSurf Core", 0xFFFFFF, 1, 1180);
+    } else {
         eonsurf_blit_infobox_image(fb, pitch, g_layout.infobox_rgba_tex, g_layout.img_w, g_layout.img_h,
                                    926, img_box_y + 4, 296, img_box_h - 8);
-    } else {
-        text_hd(990, img_box_y + 48, 1, "[ FOTO CONSOLA ]", 0x0038bdf8);
+        eonsurf_draw_mockup_text(fb, pitch, 924, 316, 20, article_title, 0x00FFFFFF, 1, 1220);
     }
 
-    int table_start_y = img_box_y + img_box_h + 32;
-    eonsurf_draw_dynamic_infobox_rows(908, table_start_y, 332, 120, 525);
+    /* 3. Infobox Derecha: Claves en blanco perla legible (0xFFE0EEF8) y valores en cian (0x48D8FF) */
+    int base_y = 368;
+    for (int i = 0; i < g_info_row_count && i < 5; i++) {
+        int ry = base_y + (i * 44);
+        for (int x = 922; x < 1222; x++) {
+            mk_blend(fb, pitch, x, ry - 6, 0x182838, 90);
+        }
+        /* Clave en Blanco Perla legible */
+        eonsurf_draw_mockup_text(fb, pitch, 930,  ry, 16, g_info_rows[i].key, 0xFFE0EEF8, 1, 1030);
+        /* Valor en Cian Neón vibrante */
+        eonsurf_draw_mockup_text(fb, pitch, 1040, ry, 16, g_info_rows[i].val, 0x48D8FF, 1, 1224);
+    }
 
     /* 4. Dibuja la franja oscura de foco detrás del párrafo donde apunta el cursor */
     eonsurf_draw_paragraph_focus_box(fb, pitch, cursor_y);
 
-    /* Cuerpo del artículo con contorno negro (Stroke) y citas superíndice [1], [2] */
-    int cur_x = 72, cur_y = 205;
+    /* 1. Margen superior correcto para el contenido del panel izquierdo (Baja el texto para que no choque arriba) */
+    int cur_x = 88, cur_y = 238;
     uint32_t cur_col = 0xF4F8FC;
     const char *p = article_body;
     char word[128];
 
-    while (*p && cur_y < 630) {
-        if (*p == '\x01') { cur_col = 0x62B8FF; p++; continue; }
-        if (*p == '\x02') { cur_col = 0xF4F8FC; p++; continue; }
-        if (*p == '\n')   { cur_x = 72; cur_y += 24; p++; continue; }
+    /* 2. Cuerpo del artículo con word-wrap y salto de línea seguro */
+    while (*p && cur_y < 620) {
+        if (*p == '\x01') { cur_col = 0x62B8FF; p++; continue; } /* Enlace celeste */
+        if (*p == '\x02') { cur_col = 0xF4F8FC; p++; continue; } /* Fin enlace */
+        if (*p == '\n')   { cur_x = 88; cur_y += 24; p++; continue; }
         if (*p == ' ')    { cur_x += 6; p++; continue; }
 
         int wi = 0;
@@ -456,13 +493,18 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         word[wi] = '\0';
 
         int est_w = wi * 9;
-        if (cur_x + est_w > 875) {
-            cur_x = 72;
+        if (cur_x + est_w > 865) {
+            cur_x = 88;
             cur_y += 24;
-            if (cur_y >= 630) break;
+            if (cur_y >= 620) break;
         }
-        /* 5. Renderizador con soporte para citas elevadas [1] */
-        cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, 880);
+        cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, 870);
+    }
+
+    /* Barra de scroll vertical integrada a la derecha del panel de lectura */
+    for (int sy = 235; sy < 580; sy++) {
+        mk_blend(fb, pitch, 882, sy, 0x1E2E40, 120);
+        mk_blend(fb, pitch, 883, sy, 0x38BDF8, 160);
     }
 
     /* Dock Inferior Translúcido con los 5 controles oficiales */
