@@ -776,8 +776,8 @@ int main(void)
             prev_btn_l1 = pdata.BTN_L1;
             prev_btn_r1 = pdata.BTN_R1;
 
-            if (pdata.BTN_L1) scroll_y -= 16;
-            if (pdata.BTN_R1) scroll_y += 16;
+            /* L1 y R1 quedan exclusivos para cambio de pestañas */
+            /* Scroll fluido asignado a gatillos L2/R2, Cruceta y Stick Derecho */
             if (pdata.BTN_L2) scroll_y -= 28;
             if (pdata.BTN_R2) scroll_y += 28;
             /* Scroll con Cruceta / Flechas de PC */

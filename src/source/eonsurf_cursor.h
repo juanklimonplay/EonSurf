@@ -186,14 +186,22 @@ static inline void eonsurf_draw_cursor(uint32_t *fb, int pitch, int cx, int cy) 
             }
         }
 
-        /* Si está cargando, dibuja un pequeño spinner circular de 4 puntos alrededor del cursor */
+        /* Indicador orbital de carga en tiempo real (Anillo giratorio Sci-Fi) */
         if (g_net_loading) {
-            float ang = (float)g_cursor_pulse_frame * 0.15f;
-            int sx = cx + 20 + (int)(cosf(ang) * 6.0f);
-            int sy = cy + 12 + (int)(sinf(ang) * 6.0f);
-            for (int dy = -1; dy <= 1; dy++)
-                for (int dx = -1; dx <= 1; dx++)
-                    mk_blend(fb, pitch, sx + dx, sy + dy, 0x00E5FF, 240);
+            float base_ang = (float)g_cursor_pulse_frame * 0.22f;
+            int center_x = cx + 24;
+            int center_y = cy + 16;
+            for (int p = 0; p < 6; p++) {
+                float a = base_ang + (float)p * (3.14159f / 3.0f);
+                int sx = center_x + (int)(cosf(a) * 9.0f);
+                int sy = center_y + (int)(sinf(a) * 9.0f);
+                int dot_alpha = 100 + p * 28;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        mk_blend(fb, pitch, sx + dx, sy + dy, 0x00E5FF, dot_alpha);
+                    }
+                }
+            }
         }
     }
     else if (g_cursor_style == CURSOR_STYLE_NEON_PRECISION) {
