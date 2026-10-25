@@ -36,8 +36,8 @@ static inline void draw_hline_fast(uint32_t *fb, int pitch, int x1, int x2, int 
 static inline const char* eonsurf_check_link_click(int cursor_x, int cursor_y) {
     for (int i = 0; i < g_link_count; i++) {
         if (!g_links[i].visible) continue;
-        if (cursor_x >= g_links[i].x && cursor_x <= (g_links[i].x + g_links[i].w) &&
-            cursor_y >= g_links[i].y && cursor_y <= (g_links[i].y + g_links[i].h)) {
+        if (cursor_x >= (g_links[i].x - 4) && cursor_x <= (g_links[i].x + g_links[i].w + 4) &&
+            cursor_y >= (g_links[i].y - 3) && cursor_y <= (g_links[i].y + g_links[i].h + 5)) {
             return g_links[i].url;
         }
     }

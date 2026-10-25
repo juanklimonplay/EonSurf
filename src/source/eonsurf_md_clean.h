@@ -39,7 +39,7 @@ static inline void eonsurf_format_markdown_and_links(const char *src, char *dst,
             continue;
         }
 
-        /* 0.1 Detectar Bloques de Código (``` o `) */
+                /* 0.1 Detectar Bloques de Código (``` o `) con etiqueta estilizada */
         if (src[si] == '`') {
             if (src[si + 1] == '`' && src[si + 2] == '`') {
                 si += 3;
@@ -66,8 +66,7 @@ static inline void eonsurf_format_markdown_and_links(const char *src, char *dst,
             dst[di++] = '\n';
             continue;
         }
-
-        /* 1. Detectar títulos Markdown (## o ###) en medio de una línea y bajar de renglón */
+/* 1. Detectar títulos Markdown (## o ###) en medio de una línea y bajar de renglón */
         if (si > 0 && (src[si - 1] == ' ' || src[si - 1] == '\n') && src[si] == '#' && (src[si + 1] == '#' || src[si + 1] == ' ')) {
             if (di > 0 && dst[di - 1] != '\n') dst[di++] = '\n';
             dst[di++] = '\n';

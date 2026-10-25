@@ -280,6 +280,9 @@ static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y
             }
         }
         eonsurf_draw_mockup_text(fb, pitch, x + 21, y + 13, 15, "W", 0x10151C, 0, x + 40);
+    } else {
+        /* Icono de Globo terráqueo Sci-Fi en azul cian */
+        eonsurf_draw_globe_icon(fb, pitch, x + 28, y + 21);
     }
 
     eonsurf_draw_mockup_text(fb, pitch, x + 48, y + 12, 17, title,
@@ -554,7 +557,31 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         /* Solo dibujar si la línea cae dentro de la ventana visible del panel (Y: 210 a 625) */
         if (cur_y >= 210 && cur_y <= 625) {
             int prev_x = cur_x;
-            cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
+            if (strcmp(word, "[CODE]") == 0) {
+                /* Caja de insignia de bloque de código en carbón con borde cian */
+                for (int cy = cur_y - 2; cy <= cur_y + 16; cy++) {
+                    for (int cx = prev_x; cx <= prev_x + 64; cx++) {
+                        mk_blend(fb, pitch, cx, cy, 0x0F172A, 240);
+                    }
+                }
+                for (int cx = prev_x; cx <= prev_x + 64; cx++) {
+                    mk_blend(fb, pitch, cx, cur_y - 2, 0x38BDF8, 255);
+                    mk_blend(fb, pitch, cx, cur_y + 16, 0x38BDF8, 255);
+                }
+                cur_x = eonsurf_draw_mockup_text(fb, pitch, prev_x + 6, cur_y, 14, "CODE", 0x38BDF8, 0, content_max_x);
+                cur_x += 8;
+            } else if (strncmp(word, "----------------", 16) == 0) {
+                /* Divisor horizontal con degradado en los extremos */
+                for (int lx = 88; lx < content_max_x - 10; lx++) {
+                    float t = (float)(lx - 88) / (float)(content_max_x - 98);
+                    float edge_fade = sinf(t * 3.14159f);
+                    int alpha = (int)(edge_fade * 180.0f);
+                    mk_blend(fb, pitch, lx, cur_y + 8, 0x38BDF8, alpha);
+                }
+                cur_x = content_max_x;
+            } else {
+                cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
+            }
             /* Si es un enlace, registrar bounding box y subrayado sutil */
             if (cur_col == 0x38BDF8) {
                 if (link_idx < g_link_count) {
@@ -568,8 +595,15 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
                         g_links[link_idx].w = cur_x - g_links[link_idx].x;
                     }
                 }
+                int is_hovered = (cursor_x >= prev_x - 3 && cursor_x <= cur_x + 3 && cursor_y >= cur_y - 2 && cursor_y <= cur_y + line_h + 3);
+                uint32_t under_col = is_hovered ? 0x00FFFF : 0x38BDF8;
+                int under_alpha = is_hovered ? 255 : 150;
                 for (int lx = prev_x; lx < cur_x; lx++) {
-                    mk_blend(fb, pitch, lx, cur_y + 15, 0x38BDF8, 160);
+                    mk_blend(fb, pitch, lx, cur_y + 15, under_col, under_alpha);
+                    if (is_hovered) {
+                        mk_blend(fb, pitch, lx, cur_y + 16, 0x00E5FF, 200);
+                        mk_blend(fb, pitch, lx, cur_y + 17, 0x0284C7, 100);
+                    }
                 }
             }
         } else {
