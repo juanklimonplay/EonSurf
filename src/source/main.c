@@ -820,7 +820,7 @@ int main(void)
             if (pdata.BTN_CROSS && !prev_btn_cross) {
                 /* A. Clic sobre pestañas superiores o botón '+' */
                 /* Clic en Emblema Hexagonal [ES] para abrir Configuraciones */
-                if (px >= 1180 && px <= 1235 && py >= 58 && py <= 100) {
+                if (px >= 1200 && px <= 1255 && py >= 58 && py <= 100) {
                     g_settings_menu_open = !g_settings_menu_open;
                 }
                 /* Clic dentro de las opciones del Centro de Control EonSurf si está abierto */
@@ -944,7 +944,7 @@ int main(void)
                         }
                     }
                     /* Barra de URL superior (Pill neón en Y: 58-100, X: 182-1152) */
-                    else if (py >= 58 && py <= 100 && px >= 182 && px <= 1152) {
+                    else if (py >= 58 && py <= 100 && px >= 182 && px <= 965) {
                         if (!eonsurf_osk_is_active()) {
                             eonsurf_osk_open("EonSurf: Ingresar URL o Busqueda Web", current_url);
                         }

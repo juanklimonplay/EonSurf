@@ -119,10 +119,11 @@ static inline int eonsurf_get_dynamic_tab_width(void) {
         if (g_tabs[i].active) visible_tabs++;
     }
     if (visible_tabs <= 0) visible_tabs = 1;
-    int available_w = 930;
-    int tab_w = (available_w - 40) / visible_tabs;
-    if (tab_w > 230) tab_w = 230;
-    if (tab_w < 90) tab_w = 90;
+    /* Al mover el medidor de RAM al renglón de la URL, las pestañas disponen de 1180px */
+    int available_w = 1180;
+    int tab_w = (available_w - 50) / visible_tabs;
+    if (tab_w > 220) tab_w = 220;
+    if (tab_w < 82) tab_w = 82;
     return tab_w;
 }
 

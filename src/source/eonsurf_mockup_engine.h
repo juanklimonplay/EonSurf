@@ -463,7 +463,30 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     /* Linea horizontal neon continua que une la pestana activa */
     eonsurf_draw_tab_baseline_glow(fb, pitch, active_tab_x, tab_w);
 
+    /* Barra de herramientas con ← → ↻ */
+    eonsurf_draw_toolbar_icons(fb, pitch);
+
+    /* Barra de URL superior (Pill neón en Y: 58-100, X: 182-965) */
+    eonsurf_draw_glowing_pill(fb, pitch, 182, 58, 783, 42, 0x0E1824, 0x20D8FF);
+    eonsurf_draw_https_padlock(fb, pitch, 202, 71);
+    eonsurf_draw_mockup_text(fb, pitch, 228, 69, 18, current_url, 0xF0F6FC, 0, 955);
+
+    /* Barra superior de progreso de red en tiempo real (Neón Cian) */
+    extern float g_load_percent;
+    extern int g_net_loading;
+    if (g_net_loading && g_load_percent > 0.0f) {
+        int bar_w = (int)((955 - 192) * (g_load_percent / 100.0f));
+        if (bar_w > 763) bar_w = 763;
+        if (bar_w < 6) bar_w = 6;
+        for (int py = 98; py <= 101; py++) {
+            for (int px = 192; px < 192 + bar_w; px++) {
+                mk_blend(fb, pitch, px, py, 0x00E5FF, 230);
+            }
+        }
+    }
+
     /* Badge Telemetria Cell B.E. + Medidor RAM XDR / GDDR3 y FPS Dinamico */
+    /* Reubicado entre la barra de URL y el centro de control [ES] en X: 978 a 1188 */
     extern float g_measured_fps;
     extern int g_ram_used_mb;
     
@@ -476,42 +499,21 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     char fps_label[48];
     snprintf(fps_label, sizeof(fps_label), "RAM %d/256MB  %.1fFPS",
              g_ram_used_mb, (g_measured_fps > 10.0f && g_measured_fps < 120.0f) ? g_measured_fps : 60.0f);
-    eonsurf_draw_glowing_pill(fb, pitch, 1025, 11, 235, 34, 0x101C28, ram_color);
+    eonsurf_draw_glowing_pill(fb, pitch, 978, 62, 210, 34, 0x101C28, ram_color);
     
     /* Punto LED indicador de estado de RAM ubicado limpiamente a la izquierda del texto */
     for (int dy = -3; dy <= 3; dy++) {
         for (int dx = -3; dx <= 3; dx++) {
             if (dx * dx + dy * dy <= 9) {
-                mk_blend(fb, pitch, 1042 + dx, 28 + dy, ram_color, 255);
+                mk_blend(fb, pitch, 992 + dx, 79 + dy, ram_color, 255);
             }
         }
     }
-    eonsurf_draw_mockup_text(fb, pitch, 1056, 19, 15, fps_label, 0xE8F4FF, 0, 1255);
+    eonsurf_draw_mockup_text(fb, pitch, 1004, 70, 14, fps_label, 0xE8F4FF, 0, 1185);
 
-    /* Barra de herramientas con ← → ↻ */
-    eonsurf_draw_toolbar_icons(fb, pitch);
-    eonsurf_draw_glowing_pill(fb, pitch, 182, 58, 970, 42, 0x0E1824, 0x20D8FF);
-    eonsurf_draw_https_padlock(fb, pitch, 202, 71);
-    eonsurf_draw_mockup_text(fb, pitch, 228, 69, 18, current_url, 0xF0F6FC, 0, 1140);
-
-    /* Barra superior de progreso de red en tiempo real (Neón Cian) */
-    extern float g_load_percent;
-    extern int g_net_loading;
-    if (g_net_loading && g_load_percent > 0.0f) {
-        int bar_w = (int)((1140 - 192) * (g_load_percent / 100.0f));
-        if (bar_w > 948) bar_w = 948;
-        if (bar_w < 6) bar_w = 6;
-        for (int py = 98; py <= 101; py++) {
-            for (int px = 192; px < 192 + bar_w; px++) {
-                mk_blend(fb, pitch, px, py, 0x00E5FF, 230);
-            }
-        }
-    }
-
-
-    /* 3. Emblema Hexagonal Neón [ES] EonSurf a la derecha */
-    int is_es_hover = (cursor_x >= 1180 && cursor_x <= 1235 && cursor_y >= 58 && cursor_y <= 100);
-    eonsurf_draw_hex_es_emblem(fb, pitch, 1205, 79, is_es_hover);
+    /* 3. Emblema Hexagonal Neón [ES] EonSurf a la derecha (Centro en X: 1222, Y: 79) */
+    int is_es_hover = (cursor_x >= 1200 && cursor_x <= 1255 && cursor_y >= 58 && cursor_y <= 100);
+    eonsurf_draw_hex_es_emblem(fb, pitch, 1225, 79, is_es_hover);
 
     /* Título H1 a 34px sobre el panel de lectura */
     const char *display_title = (strstr(current_url, "eonsurf://") != NULL) ? "EonSurf Browser" : article_title;

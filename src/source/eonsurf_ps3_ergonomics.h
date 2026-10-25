@@ -220,10 +220,10 @@ static inline EonCursorMode eonsurf_update_ps3_ergonomics(int *cursor_x, int *cu
     }
 
     /* 5. Devolver el modo visual del cursor segun la zona */
-    if (*cursor_y >= 58 && *cursor_y <= 100 && *cursor_x >= 182 && *cursor_x <= 1152) {
+    if (*cursor_y >= 58 && *cursor_y <= 100 && *cursor_x >= 182 && *cursor_x <= 965) {
         return CURSOR_IBEAM_URL; /* Sobre la barra de URL */
     }
-    if (hovered_link != -1 || (*cursor_y >= 8 && *cursor_y <= 50 && *cursor_x <= 980)) {
+    if (hovered_link != -1 || (*cursor_y >= 8 && *cursor_y <= 50 && *cursor_x <= 1240)) {
         return CURSOR_HAND_LINK; /* Sobre un enlace o pestana superior */
     }
     return CURSOR_ARROW;
