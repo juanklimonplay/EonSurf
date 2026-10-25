@@ -95,7 +95,7 @@ static inline void eonsurf_update_dynamic_infobox(const char *url, const char *r
 
     /* 1. Intentar extraer filas reales de una Infobox de Wikipedia */
 
-    const char *infobox = strstr(raw_html, "infobox");
+    const char *infobox = (raw_html != NULL) ? strstr(raw_html, "infobox") : NULL;
 
     if (infobox) {
 
