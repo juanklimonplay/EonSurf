@@ -20,15 +20,18 @@ static inline void eonsurf_strip_wiki_garbage(const char *src, char *dst, size_t
     /* 1. Si quedo el resto de un atributo HTML al inicio (ej. id="mw-content-text"...>), saltarlo */
     const char *start = src;
     const char *first_gt = strchr(src, '>');
-    if (first_gt && (first_gt - src) < 140 && strstr(src, "mw-content")) {
+    if (first_gt && (first_gt - src) < 140 && (strstr(src, "mw-content") || strstr(src, "mw-parser"))) {
         start = first_gt + 1;
     }
 
-    /* 2. Si hay un bloque de metadatos JSON/Wikitexto de MediaWiki (termina en "}}"), saltar al texto real */
-    const char *last_meta = strstr(start, "procesador\":{\"wt\"");
-    if (last_meta) {
-        const char *end_meta = strstr(last_meta, "]]");
-        if (end_meta) start = end_meta + 2;
+    /* 2. Si detectamos fragmentos residuales de JSON MediaWiki (data-mw, wt, params, etc.), saltar hasta después del corchete/llave final */
+    if (strstr(start, "\"parts\":[") || strstr(start, "{\"target\"") || strstr(start, "\"wt\":")) {
+        const char *end_json = strstr(start, "]}]");
+        if (!end_json) end_json = strstr(start, "}}");
+        if (end_json) {
+            start = end_json + 2;
+            while (*start == '}' || *start == ']' || *start == '"' || *start == '>' || *start == '\'' || *start == ' ') start++;
+        }
     }
 
     size_t di = 0;
