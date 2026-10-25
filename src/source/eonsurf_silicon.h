@@ -45,32 +45,6 @@ static inline void eonsurf_init_sysutil(void)
 }
 
 /* =========================================================================
- * 1.B MEDICION REAL DE MEMORIA RAM DE PS3 (LV2 SYSCALL 352)
- * ========================================================================= */
-typedef struct {
-    uint32_t total; /* Memoria total de usuario asignada al proceso */
-    uint32_t avail; /* Memoria libre disponible */
-} sys_memory_info_t;
-
-LV2_SYSCALL sys_memory_get_user_memory_size(sys_memory_info_t *mem_info) {
-    lv2syscall1(352, (u64)mem_info);
-    return_to_user_prog(s32);
-}
-
-static inline int eonsurf_get_real_ram_used_mb(void) {
-    sys_memory_info_t mem_info;
-    mem_info.total = 0;
-    mem_info.avail = 0;
-    if (sys_memory_get_user_memory_size(&mem_info) == 0) {
-        if (mem_info.total > 0 && mem_info.avail <= mem_info.total) {
-            uint32_t used_bytes = mem_info.total - mem_info.avail;
-            return (int)(used_bytes / (1024 * 1024));
-        }
-    }
-    return 48; /* Valor base estimado si la llamada no responde */
-}
-
-/* =========================================================================
  * 2. POOL XDR DE 64 MB ALINEADO A 128 BYTES (COMPATIBLE CON NEWLIB CRT0)
  * ========================================================================= */
 #define EONSURF_TLSF_POOL_SIZE (64 * 1024 * 1024)

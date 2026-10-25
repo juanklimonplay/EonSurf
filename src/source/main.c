@@ -38,7 +38,6 @@
 #include "eonsurf_net_bypass.h"
 #include "eonsurf_ps3_ergonomics.h"
 #include "eonsurf_bookmarks.h"
-#include "eonsurf_silicon.h"
 #include "eonsurf_net_progress.h"
 #include "eonsurf_spatial_nav.h"
 #include "eonsurf_file_explorer.h"
@@ -48,6 +47,31 @@
 
 EonCleanLink g_links[MAX_PAGE_LINKS];
 int g_link_count = 0;
+
+/* Medicion real de memoria RAM mediante syscall 352 del kernel LV2 de PS3 */
+typedef struct {
+    uint32_t total;
+    uint32_t avail;
+} eon_mem_info_t;
+
+static inline int eonsurf_get_real_ram_used_mb(void) {
+    eon_mem_info_t info;
+    info.total = 0;
+    info.avail = 0;
+    register uint64_t r3 __asm__("r3") = (uint64_t)&info;
+    register uint64_t r11 __asm__("r11") = 352;
+    __asm__ __volatile__(
+        "sc\n\t"
+        : "+r"(r3)
+        : "r"(r11)
+        : "r0", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "lr", "ctr", "xer", "cr0", "cr1", "cr5", "cr6", "cr7", "memory"
+    );
+    if (r3 == 0 && info.total > 0 && info.avail <= info.total) {
+        uint32_t used = info.total - info.avail;
+        return (int)(used / (1024 * 1024));
+    }
+    return 48;
+}
 
 float g_measured_fps = 60.0f;
 int g_ram_used_mb = 48;
