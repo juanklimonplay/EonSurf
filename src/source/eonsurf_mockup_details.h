@@ -33,36 +33,58 @@ static inline void eonsurf_draw_globe_icon(uint32_t *fb, int pitch, int cx, int 
 }
 
 /* ============================================================================
- * 2. EMBLEMA HEXAGONAL NEÓN [ES] (EonSurf) A LA DERECHA
+ * 2. EMBLEMA SCI-FI PROCEDURAL EONSURF [ES] CON GLOW REACTIVO
  * ============================================================================ */
-static inline void eonsurf_draw_hex_es_emblem(uint32_t *fb, int pitch, int cx, int cy) {
-    /* Hexágono estilizado sci-fi con glow */
+static inline void eonsurf_draw_hex_es_emblem(uint32_t *fb, int pitch, int cx, int cy, int is_hover) {
+    /* Orbe de plasma y reactor de fusión procedural EonSurf */
     int r = 22;
-    for (int dy = -r - 2; dy <= r + 2; dy++) {
-        for (int dx = -r - 2; dx <= r + 2; dx++) {
-            float adx = fabsf((float)dx);
-            float ady = fabsf((float)dy);
-            /* Distancia hexagonal */
-            float hdist = (adx * 0.866025f + ady * 0.5f);
-            float max_d = (ady > hdist) ? ady : hdist;
+    uint32_t ring_color = is_hover ? 0x00FFFF : 0x38BDF8;
+    uint32_t glow_color = is_hover ? 0x38E8FF : 0x0284C7;
+    uint32_t core_bg    = is_hover ? 0x0C2E4A : 0x091828;
 
-            if (max_d <= (float)r && max_d >= (float)(r - 2)) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, 0x38E8FF, 255);
-            } else if (max_d < (float)(r - 2) && max_d >= (float)(r - 4)) {
-                mk_blend(fb, pitch, cx + dx, cy + dy, 0x0C2236, 180);
-            } else if (max_d <= (float)(r + 3) && max_d > (float)r) {
-                int glow = (int)((1.0f - (max_d - r) / 3.0f) * 110.0f);
-                mk_blend(fb, pitch, cx + dx, cy + dy, 0x00E5FF, glow);
+    for (int dy = -r - 4; dy <= r + 4; dy++) {
+        for (int dx = -r - 4; dx <= r + 4; dx++) {
+            float dist = sqrtf((float)(dx * dx + dy * dy));
+
+            /* Resplandor exterior difuso (Aura / Glow) */
+            if (dist > (float)r && dist <= (float)(r + 4)) {
+                float factor = (float)(r + 4 - dist) / 4.0f;
+                int alpha = (int)(factor * (is_hover ? 160.0f : 90.0f));
+                mk_blend(fb, pitch, cx + dx, cy + dy, glow_color, alpha);
+            }
+            /* Anillo exterior cromado / neón */
+            else if (dist <= (float)r && dist >= (float)(r - 2.5f)) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, ring_color, 255);
+            }
+            /* Núcleo oscuro Dark Glass translúcido */
+            else if (dist < (float)(r - 2.5f) && dist >= (float)(r - 6)) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, core_bg, 220);
+            }
+            /* Anillo orbital secundario interior */
+            else if (dist < (float)(r - 6) && dist >= (float)(r - 7.5f)) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, is_hover ? 0x67E8F9 : 0x0EA5E9, 200);
+            }
+            /* Centro del reactor */
+            else if (dist < (float)(r - 7.5f)) {
+                mk_blend(fb, pitch, cx + dx, cy + dy, is_hover ? 0x164E63 : 0x051320, 240);
             }
         }
     }
-    /* Letras "ES" centradas con tipografía nítida */
-    eonsurf_draw_mockup_text(fb, pitch, cx - 12, cy - 9, 16, "ES", 0x48F8FF, 0, cx + 18);
+
+    /* Resplandor cruzado del reactor (4 puntas de estrella sutiles) */
+    for (int d = -r + 4; d <= r - 4; d++) {
+        mk_blend(fb, pitch, cx + d, cy, ring_color, is_hover ? 140 : 80);
+        mk_blend(fb, pitch, cx, cy + d, ring_color, is_hover ? 140 : 80);
+    }
+
+    /* Tipografía nítida centrada "ES" con sombreado de profundidad */
+    uint32_t text_col = is_hover ? 0xFFFFFF : 0xE0F2FE;
+    eonsurf_draw_mockup_text(fb, pitch, cx - 11, cy - 9, 16, "ES", text_col, 1, cx + 18);
 }
 
 /* Emblema PlayStation retrocompatible si se requiere */
 static inline void eonsurf_draw_ps_emblem(uint32_t *fb, int pitch, int x, int y) {
-    eonsurf_draw_hex_es_emblem(fb, pitch, x, y);
+    eonsurf_draw_hex_es_emblem(fb, pitch, x, y, 0);
 }
 
 /* ============================================================================

@@ -409,8 +409,8 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_build_mockup_background();
     memcpy(fb, g_mockup_bg_cache, 1280 * 720 * sizeof(uint32_t));
 
-    /* Pestañas superiores dinámicas estilo Chrome */
-    int tab_w = 230;
+    /* Pestañas superiores dinámicas escalables estilo Chrome (Hasta 12 pestañas) */
+    int tab_w = eonsurf_get_dynamic_tab_width();
     int tab_x = 48;
     int active_tab_x = 48;
     for (int t = 0; t < MAX_TABS; t++) {
@@ -420,12 +420,12 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         int is_wiki = (strstr(g_tabs[t].url, "wikipedia") != NULL);
         eonsurf_draw_chrome_tab(fb, pitch, tab_x, 8, tab_w, 42, g_tabs[t].title, is_act, is_wiki);
         char tab_num[8]; snprintf(tab_num, sizeof(tab_num), "%d", t + 1);
-        eonsurf_draw_mockup_text(fb, pitch, tab_x + 14, 20, 16, tab_num, is_act ? 0x8899AA : 0x556677, 0, tab_x + 35);
-        if (t == 0) eonsurf_draw_globe_icon(fb, pitch, tab_x + 38, 28);
-        tab_x += tab_w + 8;
+        eonsurf_draw_mockup_text(fb, pitch, tab_x + 12, 20, 15, tab_num, is_act ? 0x8899AA : 0x556677, 0, tab_x + 32);
+        if (t == 0) eonsurf_draw_globe_icon(fb, pitch, tab_x + 32, 28);
+        tab_x += tab_w + 4;
     }
     /* Botón '+' para nueva pestaña */
-    eonsurf_draw_mockup_text(fb, pitch, tab_x + 8, 17, 24, "+", 0x38E8FF, 0, tab_x + 35);
+    eonsurf_draw_mockup_text(fb, pitch, tab_x + 6, 17, 24, "+", 0x38E8FF, 0, tab_x + 32);
 
     /* Línea horizontal neón continua que une la pestaña activa */
     eonsurf_draw_tab_baseline_glow(fb, pitch, active_tab_x, tab_w);
@@ -456,7 +456,8 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_mockup_text(fb, pitch, 228, 69, 18, current_url, 0xF0F6FC, 0, 1140);
 
     /* 3. Emblema Hexagonal Neón [ES] EonSurf a la derecha */
-    eonsurf_draw_hex_es_emblem(fb, pitch, 1205, 79);
+    int is_es_hover = (cursor_x >= 1180 && cursor_x <= 1235 && cursor_y >= 58 && cursor_y <= 100);
+    eonsurf_draw_hex_es_emblem(fb, pitch, 1205, 79, is_es_hover);
 
     /* Título H1 a 34px sobre el panel de lectura */
     const char *display_title = (strstr(current_url, "eonsurf://") != NULL) ? "EonSurf Browser" : article_title;
@@ -502,17 +503,23 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_paragraph_focus_box(fb, pitch, cursor_y);
 
     /* 1. Renderizado del cuerpo del documento con scroll_y dinámico y cálculo de altura total */
+    int active_font_px = eonsurf_get_active_body_font_px();
+    int line_h = active_font_px + 8;
     int cur_x = 88;
     int base_doc_y = 238 - scroll_y;
     int cur_y = base_doc_y;
     uint32_t cur_col = 0xF4F8FC;
     const char *p = article_body;
     char word[128];
-    int line_h = 26;
+    int link_idx = 0;
+    for (int li = 0; li < g_link_count; li++) {
+        g_links[li].x = 0; g_links[li].y = 0; g_links[li].w = 0; g_links[li].h = 0;
+        g_links[li].visible = 0;
+    }
 
     while (*p) {
         if (*p == '\x01') { cur_col = 0x38BDF8; p++; continue; } /* Enlace azul cian brillante */
-        if (*p == '\x02') { cur_col = 0xF4F8FC; p++; continue; } /* Fin enlace */
+        if (*p == '\x02') { cur_col = 0xF4F8FC; link_idx++; p++; continue; } /* Fin enlace */
         if (*p == '\n')   { cur_x = 88; cur_y += line_h; p++; continue; }
         if (*p == ' ')    { cur_x += 7; p++; continue; }
 
@@ -532,8 +539,19 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         if (cur_y >= 210 && cur_y <= 625) {
             int prev_x = cur_x;
             cur_x = eonsurf_draw_word_with_citations(fb, pitch, cur_x, cur_y, word, cur_col, content_max_x + 5);
-            /* Si es un enlace, dibujar un subrayado sutil debajo */
+            /* Si es un enlace, registrar bounding box y subrayado sutil */
             if (cur_col == 0x38BDF8) {
+                if (link_idx < g_link_count) {
+                    if (g_links[link_idx].x == 0) {
+                        g_links[link_idx].x = prev_x;
+                        g_links[link_idx].y = cur_y;
+                        g_links[link_idx].w = cur_x - prev_x;
+                        g_links[link_idx].h = line_h;
+                        g_links[link_idx].visible = 1;
+                    } else if (g_links[link_idx].y == cur_y) {
+                        g_links[link_idx].w = cur_x - g_links[link_idx].x;
+                    }
+                }
                 for (int lx = prev_x; lx < cur_x; lx++) {
                     mk_blend(fb, pitch, lx, cur_y + 15, 0x38BDF8, 160);
                 }

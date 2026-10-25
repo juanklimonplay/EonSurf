@@ -36,6 +36,7 @@
 #include "eonsurf_article_extractor.h"
 #include "eonsurf_modern_ui.h"
 #include "eonsurf_net_bypass.h"
+#include "eonsurf_ps3_ergonomics.h"
 #include <sys/time.h>
 
 float g_measured_fps = 60.0f;
@@ -543,7 +544,9 @@ static void navigate_to(const char *input_url)
                     if (strlen(extracted_title) > 0) {
                         strncpy(page_title, extracted_title, sizeof(page_title) - 1);
                     }
-                    eonsurf_format_markdown_and_links(extracted_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    char cleaned_body[8192] = "";
+                    eonsurf_strip_wiki_garbage(extracted_body, cleaned_body, sizeof(cleaned_body));
+                    eonsurf_format_markdown_and_links(cleaned_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
                     parsed_ok = 1;
                 }
             }
@@ -643,19 +646,35 @@ int main(void)
         if (pinfo.status[0]) {
             ioPadGetData(0, &pdata);
             ax = pdata.ANA_L_H; ay = pdata.ANA_L_V;
-            px += (ax - 128) / 16; py += (ay - 128) / 16;
-            if (px < 0) px = 0;
-            if (px > (int)W - 16) px = W - 16;
-            if (py < 0) py = 0;
-            if (py > (int)H - 16) py = H - 16;
+            static int prev_dpad_up = 0;
+            static int prev_dpad_down = 0;
+            static int prev_btn_l3 = 0;
 
-            /* Scroll vertical con el Stick Derecho o Cruceta Arriba/Abajo */
+            int dpad_up_edge = (pdata.BTN_UP && !prev_dpad_up);
+            int dpad_down_edge = (pdata.BTN_DOWN && !prev_dpad_down);
+            int l3_edge = (pdata.BTN_L3 && !prev_btn_l3);
+
+            prev_dpad_up = pdata.BTN_UP;
+            prev_dpad_down = pdata.BTN_DOWN;
+            prev_btn_l3 = pdata.BTN_L3;
+
+            /* Actualización ergonómica nativa PS3 (aceleración, imán de links, L3 zoom) */
+            EonCursorMode mode = eonsurf_update_ps3_ergonomics(&px, &py, ax, ay,
+                                                               dpad_up_edge, dpad_down_edge,
+                                                               l3_edge, 0, g_links, g_link_count);
+            if (mode == CURSOR_HAND_LINK) g_cursor_dynamic_mode = CURSOR_MODE_HAND_LINK;
+            else if (mode == CURSOR_IBEAM_URL) g_cursor_dynamic_mode = CURSOR_MODE_IBEAM_TEXT;
+            else g_cursor_dynamic_mode = CURSOR_MODE_NORMAL;
+
+            /* Scroll vertical: Stick Derecho (R3) + Fallback teclado PC / L1 / R1 */
             int ry = pdata.ANA_R_V - 128;
             if (abs(ry) > 16) {
                 scroll_y += ry / 6;
             }
-            if (pdata.BTN_UP) scroll_y -= 8;
-            if (pdata.BTN_DOWN) scroll_y += 8;
+            if (pdata.BTN_L1) scroll_y -= 12;
+            if (pdata.BTN_R1) scroll_y += 12;
+            if (pdata.BTN_L2) scroll_y -= 20;
+            if (pdata.BTN_R2) scroll_y += 20;
             if (scroll_y < 0) scroll_y = 0;
             if (scroll_y > max_scroll_y) scroll_y = max_scroll_y;
 
@@ -725,9 +744,9 @@ int main(void)
                     strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
                     strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
                     scroll_y = g_tabs[g_current_tab].scroll_y;
-                } else if (tab_click >= 10 && tab_click < 10 + MAX_TABS) {
+                } else if (tab_click >= 20 && tab_click < 20 + MAX_TABS) {
                     /* Cerrar pestaña */
-                    eonsurf_tab_close(tab_click - 10);
+                    eonsurf_tab_close(tab_click - 20);
                     strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
                     strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
                     strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);

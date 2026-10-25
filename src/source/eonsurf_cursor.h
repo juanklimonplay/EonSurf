@@ -23,6 +23,15 @@ static int g_cursor_pulse_frame = 0;
 /*
  * Dibuja el puntero del ratón con soporte de estilos y animación de carga titilante
  */
+/* Modos dinamicos segun elemento apuntado (PS3 Ergonomics) */
+typedef enum {
+    CURSOR_MODE_NORMAL = 0,
+    CURSOR_MODE_HAND_LINK,
+    CURSOR_MODE_IBEAM_TEXT
+} EonCursorDynamicMode;
+
+static EonCursorDynamicMode g_cursor_dynamic_mode = CURSOR_MODE_NORMAL;
+
 static inline void eonsurf_draw_cursor(uint32_t *fb, int pitch, int cx, int cy) {
     g_cursor_pulse_frame = (g_cursor_pulse_frame + 1) % 60;
 
@@ -33,6 +42,67 @@ static inline void eonsurf_draw_cursor(uint32_t *fb, int pitch, int cx, int cy) 
         blink_alpha = (int)(140.0f + s * 115.0f);
         if (blink_alpha < 40) blink_alpha = 40;
         if (blink_alpha > 255) blink_alpha = 255;
+    }
+
+        /* MODO 1: MANITO / DEDO INDICE (Hover sobre enlaces o pestanas) */
+    if (g_cursor_dynamic_mode == CURSOR_MODE_HAND_LINK) {
+        static const uint16_t hand_mask[20] = {
+            0b0001100000000000,
+            0b0001100000000000,
+            0b0001100000000000,
+            0b0001100000000000,
+            0b0001101100000000,
+            0b0001111111000000,
+            0b0111111111100000,
+            0b1111111111100000,
+            0b1111111111100000,
+            0b1111111111100000,
+            0b1111111111100000,
+            0b0111111111100000,
+            0b0011111111000000,
+            0b0011111111000000,
+            0b0011111111000000,
+            0b0011111111000000,
+            0b0001111110000000,
+            0b0001111110000000,
+            0b0000000000000000,
+            0b0000000000000000
+        };
+
+        for (int r = 0; r < 20; r++) {
+            for (int c = 0; c < 16; c++) {
+                if (hand_mask[r] & (1 << (15 - c))) {
+                    mk_blend(fb, pitch, cx + c + 2, cy + r + 2, 0x05080E, 90);
+                }
+            }
+        }
+        for (int r = 0; r < 20; r++) {
+            for (int c = 0; c < 16; c++) {
+                if (hand_mask[r] & (1 << (15 - c))) {
+                    int edge = (r == 0 || r == 17 || c == 0 || c == 15);
+                    if (edge) {
+                        mk_blend(fb, pitch, cx + c, cy + r, 0x032838, 255);
+                    } else {
+                        mk_blend(fb, pitch, cx + c, cy + r, 0x38E8FF, blink_alpha);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    /* MODO 2: I-BEAM / CURSOR DE TEXTO (Hover sobre barra de URL) */
+    if (g_cursor_dynamic_mode == CURSOR_MODE_IBEAM_TEXT) {
+        int h = 18;
+        for (int x = -4; x <= 4; x++) {
+            mk_blend(fb, pitch, cx + x, cy - h/2, 0x00FFFF, blink_alpha);
+            mk_blend(fb, pitch, cx + x, cy + h/2, 0x00FFFF, blink_alpha);
+        }
+        for (int y = -h/2; y <= h/2; y++) {
+            mk_blend(fb, pitch, cx, cy + y, 0xFFFFFF, blink_alpha);
+            mk_blend(fb, pitch, cx + 1, cy + y, 0x00E5FF, blink_alpha);
+        }
+        return;
     }
 
     if (g_cursor_style == CURSOR_STYLE_CLASSIC_ARROW) {
