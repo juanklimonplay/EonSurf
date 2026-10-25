@@ -107,8 +107,7 @@ static void init_default_layout(void) {
     
     /* Inicializar estado inicial en la pila de historial con el portal EonSurf */
     eonsurf_tabs_init();
-    eonsurf_format_markdown_and_links(EONSURF_PORTAL_MARKDOWN, current_url);
-    strncpy(page_body, EONSURF_PORTAL_MARKDOWN, sizeof(page_body) - 1);
+    eonsurf_format_markdown_and_links(EONSURF_PORTAL_MARKDOWN, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
     eonsurf_history_push(current_url, page_body, 0, 200, strlen(page_body));
 
     /* Filas iniciales dinámicas para Ficha Técnica */
