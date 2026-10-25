@@ -111,6 +111,20 @@ static inline int eonsurf_tab_close(int tab_idx) {
     return 1;
 }
 
+/* Ancho dinámico de pestaña según la cantidad de pestañas activas */
+static inline int eonsurf_get_dynamic_tab_width(void) {
+    int visible_tabs = 0;
+    for (int i = 0; i < MAX_TABS; i++) {
+        if (g_tabs[i].active) visible_tabs++;
+    }
+    if (visible_tabs <= 0) visible_tabs = 1;
+    int available_w = 930;
+    int tab_w = (available_w - 40) / visible_tabs;
+    if (tab_w > 230) tab_w = 230;
+    if (tab_w < 90) tab_w = 90;
+    return tab_w;
+}
+
 /* Detecta clics sobre las pestanas superiores o el boton '+' */
 /* Devuelve:
  *  0..MAX_TABS-1 = Clic en pestana para cambiar
@@ -121,17 +135,7 @@ static inline int eonsurf_tab_close(int tab_idx) {
 static inline int eonsurf_tabs_check_click(int cursor_x, int cursor_y) {
     if (cursor_y < 6 || cursor_y > 48) return -1;
 
-    int visible_tabs = 0;
-    for (int i = 0; i < MAX_TABS; i++) {
-        if (g_tabs[i].active) visible_tabs++;
-    }
-    if (visible_tabs <= 0) visible_tabs = 1;
-
-    /* Ancho adaptativo segun cuantas pestanas haya abiertas (max 230, min 90) */
-    int available_w = 930;
-    int tab_w = (available_w - 40) / visible_tabs;
-    if (tab_w > 230) tab_w = 230;
-    if (tab_w < 90) tab_w = 90;
+    int tab_w = eonsurf_get_dynamic_tab_width();
 
     int slot_x = 48;
     for (int i = 0; i < MAX_TABS; i++) {
