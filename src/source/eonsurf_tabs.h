@@ -16,6 +16,7 @@ typedef struct {
     int  max_scroll_y;
     int  http_code;
     int  active;      /* 1 = Pestana abierta, 0 = Pestana vacia/cerrada */
+    int  is_sleeping; /* 1 = Pestaña en reposo para ahorrar RAM (< 256MB) */
     uint32_t last_accessed_sec;
 } EonTab;
 
@@ -163,6 +164,21 @@ static inline int eonsurf_tabs_check_click(int cursor_x, int cursor_y) {
     }
 
     return -1;
+}
+
+/* Pone en reposo las pestanas en segundo plano inactivas por mas de 10 minutos (600s) */
+static inline void eonsurf_tabs_check_sleep_timeout(uint32_t current_time_sec) {
+    for (int i = 0; i < MAX_TABS; i++) {
+        if (!g_tabs[i].active || i == g_current_tab) continue;
+        if (current_time_sec > g_tabs[i].last_accessed_sec &&
+            (current_time_sec - g_tabs[i].last_accessed_sec) > 600) {
+            if (!g_tabs[i].is_sleeping) {
+                g_tabs[i].is_sleeping = 1;
+                /* Liberar buffer de texto de la pestana en reposo para liberar memoria */
+                g_tabs[i].body[0] = '\0';
+            }
+        }
+    }
 }
 
 #endif /* EONSURF_TABS_H */

@@ -770,8 +770,15 @@ int main(void)
                     eonsurf_tab_select(tab_click);
                     strncpy(current_url, g_tabs[g_current_tab].url, sizeof(current_url) - 1);
                     strncpy(page_title, g_tabs[g_current_tab].title, sizeof(page_title) - 1);
-                    strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
                     scroll_y = g_tabs[g_current_tab].scroll_y;
+
+                    /* Si la pestaña estaba en reposo (RAM Swap), restaurar su contenido */
+                    if (g_tabs[g_current_tab].is_sleeping || strlen(g_tabs[g_current_tab].body) == 0) {
+                        g_tabs[g_current_tab].is_sleeping = 0;
+                        navigate_to(current_url);
+                    } else {
+                        strncpy(page_body, g_tabs[g_current_tab].body, sizeof(page_body) - 1);
+                    }
                 } else if (tab_click >= 20 && tab_click < 20 + MAX_TABS) {
                     /* Cerrar pestaña */
                     eonsurf_tab_close(tab_click - 20);
