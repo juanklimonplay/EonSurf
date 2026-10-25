@@ -305,18 +305,18 @@ static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y
 
     if (is_wiki) {
         for (int iy = y + 11; iy < y + 31; iy++) {
-            for (int ix = x + 16; ix < x + 36; ix++) {
+            for (int ix = x + 10; ix < x + 30; ix++) {
                 mk_blend(fb, pitch, ix, iy, 0xF0F4F8, 255);
             }
         }
-        eonsurf_draw_mockup_text(fb, pitch, x + 19, y + 13, 15, "W", 0x10151C, 0, x + 38);
+        eonsurf_draw_mockup_text(fb, pitch, x + 13, y + 13, 15, "W", 0x10151C, 0, x + 32);
     } else {
-        /* Icono de Globo terraqueo Sci-Fi en azul cian */
-        eonsurf_draw_globe_icon(fb, pitch, x + 26, y + 21);
+        /* Icono de Globo terraqueo Sci-Fi en azul cian centrado */
+        eonsurf_draw_globe_icon(fb, pitch, x + 20, y + 21);
     }
 
-    /* Titulo de la pestana con recorte inteligente y boton 'x' */
-    eonsurf_draw_mockup_text(fb, pitch, x + 44, y + 12, 16, title,
+    /* Titulo de la pestana limpio sin numeracion y boton 'x' */
+    eonsurf_draw_mockup_text(fb, pitch, x + 36, y + 12, 16, title,
                              is_active ? 0xFFFFFF : 0x94A3B8, 0, x + w - 28);
     eonsurf_draw_mockup_text(fb, pitch, x + w - 22, y + 12, 15, "x", 0x64748B, 0, x + w - 6);
 }
@@ -453,8 +453,7 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
         if (is_act) active_tab_x = tab_x;
         int is_wiki = (strstr(g_tabs[t].url, "wikipedia") != NULL);
         eonsurf_draw_chrome_tab(fb, pitch, tab_x, 8, tab_w, 42, g_tabs[t].title, is_act, is_wiki);
-        char tab_num[8]; snprintf(tab_num, sizeof(tab_num), "%d", t + 1);
-        eonsurf_draw_mockup_text(fb, pitch, tab_x + 10, 20, 14, tab_num, is_act ? 0x94A3B8 : 0x556677, 0, tab_x + 24);
+
         tab_x += tab_w + 4;
     }
     /* Boton '+' para nueva pestana */

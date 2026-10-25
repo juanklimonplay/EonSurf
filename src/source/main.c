@@ -656,7 +656,7 @@ int main(void)
 
     while (running) {
         int ax = 128, ay = 128;
-        /* Medición real de FPS cada 30 frames */
+        /* Medición real de FPS y Telemetría de RAM real por syscall del kernel cada 30 frames */
         g_fps_frame_count++;
         if (g_fps_frame_count >= 30) {
             struct timeval tv;
@@ -668,6 +668,9 @@ int main(void)
             }
             g_last_time_usec = now_usec;
             g_fps_frame_count = 0;
+
+            /* Telemetría real de memoria RAM */
+            g_ram_used_mb = eonsurf_get_real_ram_used_mb();
         }
         sysUtilCheckCallback();
 
