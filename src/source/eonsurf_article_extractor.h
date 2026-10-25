@@ -25,10 +25,19 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
         const char *title_end = strstr(title_start, "</title>");
         if (!title_end) title_end = strstr(title_start, "</TITLE>");
         if (title_end && title_end > title_start) {
-            size_t tlen = (size_t)(title_end - title_start);
-            if (tlen >= max_title) tlen = max_title - 1;
-            strncpy(out_title, title_start, tlen);
-            out_title[tlen] = '\0';
+            size_t di = 0;
+            for (const char *tp = title_start; tp < title_end && di + 1 < max_title; tp++) {
+                unsigned char c = (unsigned char)*tp;
+                if (c == '\r' || c == '\n' || c == '\t') {
+                    if (di > 0 && out_title[di - 1] != ' ') out_title[di++] = ' ';
+                } else if (c >= 32 && c <= 126) {
+                    out_title[di++] = (char)c;
+                } else if (c >= 192) {
+                    out_title[di++] = (char)c; /* Permitir UTF-8 */
+                }
+            }
+            while (di > 0 && out_title[di - 1] == ' ') di--;
+            out_title[di] = '\0';
         }
     }
 

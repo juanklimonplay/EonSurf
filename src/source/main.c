@@ -35,6 +35,7 @@
 #include "eonsurf_cursor.h"
 #include "eonsurf_article_extractor.h"
 #include "eonsurf_modern_ui.h"
+#include "eonsurf_net_bypass.h"
 #include <sys/time.h>
 
 float g_measured_fps = 60.0f;
@@ -454,7 +455,7 @@ static void navigate_to(const char *input_url)
     char target_url[512] = "";
     eonsurf_history_save_current_scroll(scroll_y);
 
-    eonsurf_build_search_url(input_url, target_url, sizeof(target_url));
+    eonsurf_build_search_url_fixed(input_url, target_url, sizeof(target_url));
 
     strncpy(current_url, target_url, sizeof(current_url) - 1);
     current_url[sizeof(current_url) - 1] = '\0';
@@ -463,6 +464,20 @@ static void navigate_to(const char *input_url)
     snprintf(page_body, sizeof(page_body), "Conectando al servidor web...");
     page_links_count = 0;
     scroll_y = 0;
+
+    /* 1. Intercepcion local instantanea de eonsurf://portal y eonsurf://home (Cero Red) */
+    if (strncmp(target_url, "eonsurf://", 10) == 0) {
+        snprintf(page_title, sizeof(page_title), "Portal EonSurf");
+        eonsurf_format_markdown_and_links(EONSURF_PORTAL_MARKDOWN, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+        eonsurf_update_dynamic_infobox("eonsurf://core", NULL, 0, 200, g_link_count);
+        strncpy(g_tabs[g_current_tab].url, current_url, sizeof(g_tabs[g_current_tab].url) - 1);
+        strncpy(g_tabs[g_current_tab].title, page_title, sizeof(g_tabs[g_current_tab].title) - 1);
+        strncpy(g_tabs[g_current_tab].body, page_body, sizeof(g_tabs[g_current_tab].body) - 1);
+        g_tabs[g_current_tab].scroll_y = 0;
+        g_tabs[g_current_tab].http_code = 200;
+        eonsurf_history_push(current_url, page_body, 0, 200, strlen(page_body));
+        return;
+    }
 
     if (!net_initialized) {
         snprintf(page_title, sizeof(page_title), "Sin Conexion");
@@ -480,16 +495,32 @@ static void navigate_to(const char *input_url)
         curl_easy_setopt(curl, CURLOPT_URL, target_url);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, http_write_callback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        struct curl_slist *stealth_hdrs = eonsurf_apply_stealth_browser_headers(curl);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 
         CURLcode res = curl_easy_perform(curl);
+        if (stealth_hdrs) {
+            curl_slist_free_all(stealth_hdrs);
+        }
+
         if (res == CURLE_OK && chunk.size > 0) {
             long response_code = 0;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+
+            /* Fallback anti-captcha automatico si DuckDuckGo tira HTTP 202 o desafio */
+            if (eonsurf_is_captcha_blocked((int)response_code, chunk.data)) {
+                char fallback_url[512] = "";
+                eonsurf_build_fallback_wiki_search(target_url, fallback_url, sizeof(fallback_url));
+                if (chunk.data) free(chunk.data);
+                curl_easy_cleanup(curl);
+                g_net_loading = 0;
+                navigate_to(fallback_url);
+                return;
+            }
+
             snprintf(page_title, sizeof(page_title), "HTTP %ld: %s", response_code, target_url);
 
             char raw_extracted[7800] = "";

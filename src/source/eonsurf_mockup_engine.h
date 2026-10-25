@@ -282,7 +282,7 @@ static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y
         eonsurf_draw_mockup_text(fb, pitch, x + 21, y + 13, 15, "W", 0x10151C, 0, x + 40);
     }
 
-    eonsurf_draw_mockup_text(fb, pitch, x + 46, y + 12, 17, title,
+    eonsurf_draw_mockup_text(fb, pitch, x + 48, y + 12, 17, title,
                              is_active ? 0xFFFFFF : 0x90A4B8, 0, x + w - 34);
     eonsurf_draw_mockup_text(fb, pitch, x + w - 26, y + 12, 16, "x", 0x8899AA, 0, x + w - 8);
 }
