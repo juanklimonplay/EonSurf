@@ -567,3 +567,27 @@ A partir de la versión v0.3.1-alpha / v1.0.0, EonSurf incorpora la arquitectura
 4. **Infobox Lateral Inteligente (30%):** Renderizado con tarjeta translucida Dark Glass, conmutacion automatica entre chip procedural isometrico 3D (`EonSurf Core`) para URLs internas o telemetria de red, y miniatura fotografica decodificada por hardware para Wikipedia.
 5. **Teclado Sony Oficial en Pantalla (OSK):** Integracion no bloqueante a traves de `sysutil/osk.h` y conversion automatica bidireccional UTF-8 a UTF-16 Big-Endian requerida por el kernel Lv2.
 6. **Interceptor de Descargas Directas (.PKG / .ZIP / .ISO):** Ruteo inteligente a `/dev_hdd0/packages/` y `/dev_hdd0/downloads/` con panel flotante OSD en tiempo real y buffer de 64 KB para proteccion del HDD mecanico.
+
+## 23. Salto a Navegador Clásico: Pestañas Interactivas, Lienzo Completo y Cursor Dinámico
+
+En respuesta a las pruebas de campo en emulador y consola real, se ha transformado la arquitectura visual de maqueta estática hacia un **navegador interactivo multi-página clásico**:
+
+1. **Pestañas 100% Funcionales e Interactivas en RAM (eonsurf_tabs.h):**
+   - Sistema de hasta 4 pestañas simultáneas independientes en memoria XDR.
+   - Cada pestaña preserva su URL, título dinámico, texto formateado y posición de scroll individual.
+   - Clic con Cruz (✕) sobre cualquier pestaña: conmuta la visualización en < 0.1 ms.
+   - Clic en el botón +: abre instantáneamente una nueva pestaña con el Speed Dial / Portal EonSurf.
+   - Clic en la x de una pestaña: cierra la pestaña y reenfoca la adyacente.
+
+2. **Lienzo Web Completo (Full-Width Canvas):**
+   - Se eliminó la rigidez del panel derecho fijo (30%).
+   - Para páginas web normales y el Speed Dial, el documento respira y se diagrama en todo el ancho útil (1120 píxeles).
+   - El Infobox lateral se activa de forma condicional solo cuando la página cuenta con ficha técnica o miniatura real.
+
+3. **Puntero del Ratón Ergonómico con Feedback de Carga (eonsurf_cursor.h):**
+   - Se sustituyó la flecha gigante por una flecha clásica de sistema (18x24 px) en blanco brillante con contorno oscuro y sombra suave.
+   - **Indicador de Carga Titilante:** Mientras la red descarga datos (g_net_loading == 1), el puntero pulsa rítmicamente en color cian neón con un spinner circular, ofreciendo feedback inmediato al usuario.
+   - 3 estilos de cursor disponibles (CURSOR_STYLE_CLASSIC_ARROW, CURSOR_STYLE_NEON_PRECISION, CURSOR_STYLE_CROSSHAIR).
+
+4. **Telemetría y Medición de FPS en Tiempo Real:**
+   - Cálculo por delta de microsegundos mediante gettimeofday() en cada ráfaga de 30 fotogramas, reemplazando la etiqueta fija por la tasa real de refresco del PPU.
