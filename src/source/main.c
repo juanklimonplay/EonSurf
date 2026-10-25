@@ -505,6 +505,9 @@ static void navigate_to(const char *input_url)
             char detected_img_url[256] = "";
             if (eonsurf_find_first_image_url(chunk.data, detected_img_url, sizeof(detected_img_url))) {
                 if (eonsurf_fetch_and_decode_infobox_image(detected_img_url)) {
+                    if (g_layout.infobox_rgba_tex && g_layout.infobox_rgba_tex != g_infobox_tex) {
+                        free(g_layout.infobox_rgba_tex);
+                    }
                     g_layout.infobox_rgba_tex = g_infobox_tex;
                     g_layout.img_w = g_infobox_w;
                     g_layout.img_h = g_infobox_h;
@@ -619,10 +622,10 @@ int main(void)
 
             /* 3. Clic con Cruz [X] */
             if (pdata.BTN_CROSS && !prev_btn_cross) {
-                /* A. Clic en botones '<' o '>' de la barra superior */
+                /* A. Clic en botones '←', '→' o '↻' de la barra superior */
                 int nav_click = eonsurf_check_nav_buttons_click(px, py);
                 if (nav_click == -1) {
-                    /* Clic con cursor en '<' (Back) */
+                    /* Clic con cursor en '←' (Back) */
                     int restored_scroll = 0, restored_code = 200; size_t restored_dl = 0;
                     if (eonsurf_history_go_back(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
                         scroll_y = restored_scroll;
@@ -631,7 +634,7 @@ int main(void)
                         eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                     }
                 } else if (nav_click == 1) {
-                    /* Clic con cursor en '>' (Forward) */
+                    /* Clic con cursor en '→' (Forward) */
                     int restored_scroll = 0, restored_code = 200; size_t restored_dl = 0;
                     if (eonsurf_history_go_forward(scroll_y, current_url, page_body, &restored_scroll, &restored_code, &restored_dl)) {
                         scroll_y = restored_scroll;
@@ -639,6 +642,9 @@ int main(void)
                         eonsurf_format_markdown_and_links(page_body, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
                         eonsurf_update_dynamic_infobox(current_url, page_body, restored_dl, restored_code, g_link_count);
                     }
+                } else if (nav_click == 2) {
+                    /* Clic con cursor en '↻' (Reload) */
+                    navigate_to(current_url);
                 }
                 /* B. Clic sobre enlace en el texto */
                 else {
@@ -651,8 +657,8 @@ int main(void)
                             navigate_to(clicked_link);
                         }
                     }
-                    /* Barra de URL superior */
-                    else if (py >= 10 && py <= 50 && px >= 120 && px <= 120 + (W - 440)) {
+                    /* Barra de URL superior (Pill neón en Y: 58-100, X: 182-1152) */
+                    else if (py >= 58 && py <= 100 && px >= 182 && px <= 1152) {
                         if (!eonsurf_osk_is_active()) {
                             eonsurf_osk_open("EonSurf: Ingresar URL o Busqueda Web", current_url);
                         }

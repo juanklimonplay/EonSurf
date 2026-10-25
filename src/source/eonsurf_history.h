@@ -21,16 +21,21 @@ static EonHistoryEntry g_history[MAX_HISTORY_SLOTS];
 static int g_hist_cur = -1;  /* Índice de la página actual */
 static int g_hist_top = -1;  /* Índice máximo alcanzado (para poder ir Forward '>') */
 
-/* Coordenadas exactas de botones '<' y '>' en el header superior (Y: 10-46) */
-#define BTN_BACK_X  60
-#define BTN_BACK_Y  14
-#define BTN_BACK_W  28
-#define BTN_BACK_H  30
+/* Coordenadas exactas de botones visuales '←', '→' y '↻' en la toolbar superior */
+#define BTN_BACK_X    24
+#define BTN_BACK_Y    60
+#define BTN_BACK_W    36
+#define BTN_BACK_H    36
 
-#define BTN_FWD_X   92
-#define BTN_FWD_Y   14
-#define BTN_FWD_W   28
-#define BTN_FWD_H   30
+#define BTN_FWD_X     74
+#define BTN_FWD_Y     60
+#define BTN_FWD_W     36
+#define BTN_FWD_H     36
+
+#define BTN_RELOAD_X  124
+#define BTN_RELOAD_Y  60
+#define BTN_RELOAD_W  36
+#define BTN_RELOAD_H  36
 
 /* 
  * 1. Llamar ANTES de saltar a una nueva URL:
@@ -123,17 +128,21 @@ static inline int eonsurf_history_go_forward(int current_scroll_y, char *out_url
 }
 
 /* 
- * 5. Detecta si el usuario hizo clic con el cursor (Botón X) sobre los botones '<' o '>':
- * Devuelve: -1 si clickeó '<' (Back), +1 si clickeó '>' (Forward), 0 si no tocó ninguno.
+ * 5. Detecta si el usuario hizo clic con el cursor (Botón X) sobre los botones '←', '→' o '↻':
+ * Devuelve: -1 si clickeó '←' (Back), +1 si clickeó '→' (Forward), 2 si clickeó '↻' (Reload), 0 si no tocó ninguno.
  */
 static inline int eonsurf_check_nav_buttons_click(int cursor_x, int cursor_y) {
     if (cursor_x >= BTN_BACK_X && cursor_x <= (BTN_BACK_X + BTN_BACK_W) &&
         cursor_y >= BTN_BACK_Y && cursor_y <= (BTN_BACK_Y + BTN_BACK_H)) {
-        return -1; /* Click en '<' */
+        return -1; /* Click en '←' */
     }
     if (cursor_x >= BTN_FWD_X && cursor_x <= (BTN_FWD_X + BTN_FWD_W) &&
         cursor_y >= BTN_FWD_Y && cursor_y <= (BTN_FWD_Y + BTN_FWD_H)) {
-        return 1;  /* Click en '>' */
+        return 1;  /* Click en '→' */
+    }
+    if (cursor_x >= BTN_RELOAD_X && cursor_x <= (BTN_RELOAD_X + BTN_RELOAD_W) &&
+        cursor_y >= BTN_RELOAD_Y && cursor_y <= (BTN_RELOAD_Y + BTN_RELOAD_H)) {
+        return 2;  /* Click en '↻' (Reload) */
     }
     return 0;
 }

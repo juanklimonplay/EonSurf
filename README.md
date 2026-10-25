@@ -531,3 +531,39 @@ static inline void eonsurf_sync_and_blit(gcmContextData *ctx, uint32_t dst_vram_
 2. **Estabilidad Térmica Activa:** Lectura continua de la syscall 383 para salvar la sesión y apagar de emergencia (syscall 379 con opcode `0x1100`) si el Cell supera los 85°C.
 3. **Firmado y Resolución de Stubs:** El script de compilación ejecuta rigurosamente `sprxlinker` antes de `make_fself` / `make_self_npdrm` para evitar saltos nulos (`0x00000000`).
 4. **Sandboxing de Red & Anti-OOM:** Corte en 3.000 nodos elementales con el autómata FSM en PPU1 y purga atómica de memoria con `arena_destroy()` al cerrar pestañas.
+
+---
+
+## 22. Motor Visual Mockup v2 & Especificaciones Técnicas de Renderizado Final
+
+A partir de la versión v0.3.1-alpha / v1.0.0, EonSurf incorpora la arquitectura visual **Dark Glass & Titanium** con renderizado TrueType vectorial a 60 FPS locked:
+
+```text
++----------------------------------------------------------------------------------------------------+
+| [1  (*) EonSurf Portal  x]  [2  [W] Wikipedia - Cell B.E.  x]  [+]          [ Cell B.E. - 60 FPS ] |
+| -------------------------------------------------------------------------------------------------- |
+| [<-] [->] [R]  [ (*) https://es.wikipedia.org/wiki/PlayStation_3                     ]   [ES]      |
+|                                                                                                    |
+|  PlayStation 3 - Wikipedia                      +------------------------------------------------+ |
+|                                                 |               [ Ficha Tecnica ]                | |
+|  PlayStation 3 (oficialmente abreviada          |            +-----------------------+           | |
+|  como PS3[1]) es la tercera videoconsola        |            |   Miniatura PS3 Fat   |           | |
+|  del modelo PlayStation de Sony Computer        |            +-----------------------+           | |
+|  Entertainment[2].                              |  Fabricante:    Sony Computer Ent.     | |
+|                                                 |  Lanzamiento:   11 de nov. de 2006     | |
+|  Forma parte de las videoconsolas de septima    |  CPU:           Cell B.E. 3.2GHz       | |
+|  generacion y compitio contra la Xbox 360[3]    |  GPU:           RSX 500MHz VRAM        | |
+|  de Microsoft y la Wii de Nintendo...           |  Ventas:        87.4M unidades         | |
+|                                                 +------------------------------------------------+ |
+|                                                                                                    |
+|            (T) URL / Search     (X) Select     (O) Back     (S) Tabs     (R3) Scroll               |
++----------------------------------------------------------------------------------------------------+
+```
+
+### Componentes de la Interfaz Integrados:
+1. **Pestanas Curvas Neon (Chrome Style):** Pestana activa iluminada con glow cian difuso (`0x55E8FF`), icono vectorial de globo terraqueo, y linea base neon continua.
+2. **Barra de Navegacion Toolbar:** Botones `<-`, `->` y `R` (Reload) interactivos mediante clic directo con Cruz (X) o atajos de mando, barra de URL en pildora translucida con candado verde HTTPS y emblema hexagonal neon `[ES]`.
+3. **Motor Tipografico TrueType Vectorial (`stb_truetype`):** Renderizado con contorno negro (stroke antialiasing) para maxima legibilidad sobre cualquier fondo, cache de glifos en RAM XDR para 60 FPS sin jitter, y resaltado de citas bibliograficas `[1]`, `[2]`, `[3]` en celeste cian.
+4. **Infobox Lateral Inteligente (30%):** Renderizado con tarjeta translucida Dark Glass, conmutacion automatica entre chip procedural isometrico 3D (`EonSurf Core`) para URLs internas o telemetria de red, y miniatura fotografica decodificada por hardware para Wikipedia.
+5. **Teclado Sony Oficial en Pantalla (OSK):** Integracion no bloqueante a traves de `sysutil/osk.h` y conversion automatica bidireccional UTF-8 a UTF-16 Big-Endian requerida por el kernel Lv2.
+6. **Interceptor de Descargas Directas (.PKG / .ZIP / .ISO):** Ruteo inteligente a `/dev_hdd0/packages/` y `/dev_hdd0/downloads/` con panel flotante OSD en tiempo real y buffer de 64 KB para proteccion del HDD mecanico.
