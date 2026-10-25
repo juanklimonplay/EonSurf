@@ -60,9 +60,7 @@ static int cur, first = 1, running = 1;
 
 static char current_url[512] = "eonsurf://portal";
 static char page_title[256] = "Portal EonSurf";
-static char page_body[8192] = "Bienvenido al motor nativo Dark Glass corriendo sobre el silicio Cell B.E. a 60 FPS.
-
-Presiona X sobre cualquier enlace para navegar con aceleracion por hardware RSX.";
+static char page_body[8192] = "Bienvenido al motor nativo Dark Glass corriendo sobre el silicio Cell B.E. a 60 FPS.\n\nPresiona X sobre cualquier enlace para navegar con aceleracion por hardware RSX.";
 static int net_initialized = 0;
 
 /* Motor de Maquetación Estructurada 70/30 (eonsurf_layout.h) */
