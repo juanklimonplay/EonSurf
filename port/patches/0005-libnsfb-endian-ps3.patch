@@ -1,8 +1,11 @@
 --- a/src/plot.h
 +++ b/src/plot.h
-@@ -45,2 +45,5 @@
- #elif defined(__APPLE__)
-+    /* mac os x has the include somewhere different */
+@@ -34,6 +34,9 @@
+     #include <machine/endian.h>
+     #if __DARWIN_BYTE_ORDER == __DARWIN_BIG_ENDIAN
+         #define NSFB_BE_BYTE_ORDER
+     #endif
 +#elif defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__)
 +    #define NSFB_BE_BYTE_ORDER
  #elif defined(__FreeBSD__)
+     /* freebsd has the include somewhere different */
