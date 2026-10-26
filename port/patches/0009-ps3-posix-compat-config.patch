@@ -1,8 +1,8 @@
 diff --git a/netsurf/utils/config.h b/netsurf/utils/config.h
-index f54326d..aaed99f 100644
+index f54326d..0c1dc05 100644
 --- a/netsurf/utils/config.h
 +++ b/netsurf/utils/config.h
-@@ -20,6 +20,10 @@
+@@ -19,6 +19,10 @@
  #ifndef NETSURF_UTILS_CONFIG_H_
  #define NETSURF_UTILS_CONFIG_H_
  
@@ -11,29 +11,39 @@ index f54326d..aaed99f 100644
 +#endif
 +
  #include <stddef.h>
- #include <stdio.h>
- #include <string.h>
-@@ -63,7 +63,7 @@ char *strcasestr(const char *haystack, const char *needle);
+ 
+ #if defined(__NetBSD__)
+@@ -63,7 +67,10 @@ char *strcasestr(const char *haystack, const char *needle);
       defined(__BEOS__) ||     \
       defined(__amigaos4__) || \
       defined(__AMIGA__) ||    \
 -     defined(__MINT__))
-+     defined(__MINT__) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
++     defined(__MINT__) ||     \
++     defined(__PS3__) ||      \
++     defined(__CELLOS_LV2__) || \
++     defined(__powerpc__))
  #undef HAVE_STRPTIME
  #undef HAVE_STRFTIME
  #else
-@@ -112,6 +112,10 @@ char *realpath(const char *path, char *resolved_path);
- #define HAVE_UTSNAME
- #if (defined(_WIN32) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
- #undef HAVE_UTSNAME
-+#endif
-+
-+#if (defined(_WIN32) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
-+#undef HAVE_SIGPIPE
+@@ -110,7 +117,7 @@ char *strchrnul(const char *s, int c);
  #endif
  
- #define HAVE_MMAP
-@@ -136,7 +140,7 @@ char *realpath(const char *path, char *resolved_path);
+ #define HAVE_UTSNAME
+-#if (defined(_WIN32))
++#if (defined(_WIN32) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
+ #undef HAVE_UTSNAME
+ #endif
+ 
+@@ -126,7 +133,7 @@ char *realpath(const char *path, char *resolved_path);
+ #endif
+ 
+ #define HAVE_SIGPIPE
+-#if (defined(_WIN32))
++#if (defined(_WIN32) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
+ #undef HAVE_SIGPIPE
+ #endif
+ 
+@@ -136,7 +143,7 @@ char *realpath(const char *path, char *resolved_path);
  #endif
  
  #define HAVE_MMAP
@@ -42,7 +52,7 @@ index f54326d..aaed99f 100644
  #undef HAVE_MMAP
  #endif
  
-@@ -149,7 +149,7 @@ char *realpath(const char *path, char *resolved_path);
+@@ -149,7 +156,7 @@ char *realpath(const char *path, char *resolved_path);
  #define HAVE_DIRFD
  #define HAVE_UNLINKAT
  #define HAVE_FSTATAT
