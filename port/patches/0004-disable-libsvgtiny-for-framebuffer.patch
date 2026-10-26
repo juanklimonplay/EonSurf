@@ -1,0 +1,60 @@
+diff --git a/Makefile b/Makefile
+index 87a340d..978b231 100644
+--- a/Makefile
++++ b/Makefile
+@@ -61,26 +61,26 @@ endif
+ 
+ # only build what we require for the target
+ ifeq ($(TARGET),riscos)
+-  NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_SVGTINY_TARG) $(NSLIB_RO_TARG)
++  NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_RO_TARG)
+   NSBUILD_TARG := $(NSGENBIND_TARG)
+ else
+   ifeq ($(TARGET),framebuffer)
+-    NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_SVGTINY_TARG)  $(NSLIB_FB_TARG)
++    NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_FB_TARG)
+     NSBUILD_TARG := $(NSGENBIND_TARG)
+   else
+     ifeq ($(TARGET),amiga)
+-      NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_SVGTINY_TARG)
++      NSLIB_TARG := $(NSLIB_ALL_TARG) 
+       NSBUILD_TARG := $(NSGENBIND_TARG)
+     else
+       ifeq ($(TARGET),cocoa)
+-        NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_SVGTINY_TARG) 
++        NSLIB_TARG := $(NSLIB_ALL_TARG) 
+         NSBUILD_TARG := $(NSGENBIND_TARG)
+       else
+         ifeq ($(TARGET),atari)
+           NSLIB_TARG := $(NSLIB_ALL_TARG)
+           NSBUILD_TARG := $(NSGENBIND_TARG)
+         else
+-          NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_SVGTINY_TARG) 
++          NSLIB_TARG := $(NSLIB_ALL_TARG) 
+           NSBUILD_TARG := $(NSGENBIND_TARG)
+         endif
+       endif
+@@ -122,7 +122,7 @@ $(TMP_PREFIX)/build-stamp:
+ 	mkdir -p $(TMP_PREFIX)/bin
+ 	$(foreach L,$(NSLIB_TARG),$(call do_prefix_install,$(L)))
+ 	$(foreach L,$(NSBUILD_TARG),$(call do_build_prefix_install,$(L)))
+-	$(MAKE) --directory=$(NETSURF_TARG) PREFIX=$(PREFIX) TARGET=$(TARGET) $(NETSURF_CONFIG)
++	$(MAKE) --directory=$(NETSURF_TARG) PREFIX=$(PREFIX) TARGET=$(TARGET) HOST=$(HOST) $(NETSURF_CONFIG)
+ 	touch $@
+ 
+ package: $(TMP_PREFIX)/build-stamp
+@@ -138,12 +138,12 @@ clean:
+ 	$(MAKE) clean --directory=$(NETSURF_TARG) TARGET=$(TARGET)
+ 
+ # check out last release tag on each submodule
+-checkout-release: $(NSLIB_TARG) $(NETSURF_TARG) $(NSGENBIND_TARG) $(NSLIB_FB_TARG) $(NSLIB_SVGTINY_TARG) $(NSLIB_RO_TARG)
++checkout-release: $(NSLIB_TARG) $(NETSURF_TARG) $(NSGENBIND_TARG) $(NSLIB_FB_TARG) $(NSLIB_RO_TARG)
+ 	git fetch --recurse-submodules
+ 	for x in $^; do cd $$x; (git checkout origin/HEAD && git checkout $$(git describe --abbrev=0 --match="release/*" )); cd ..; done
+ 
+ # check out head on each submodule
+-checkout-head: $(NSLIB_TARG) $(NETSURF_TARG) $(NSGENBIND_TARG) $(NSLIB_FB_TARG) $(NSLIB_SVGTINY_TARG) $(NSLIB_RO_TARG)
++checkout-head: $(NSLIB_TARG) $(NETSURF_TARG) $(NSGENBIND_TARG) $(NSLIB_FB_TARG) $(NSLIB_RO_TARG)
+ 	git submodule init
+ 	git submodule update
+ 	git fetch --recurse-submodules
