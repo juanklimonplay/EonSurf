@@ -1,5 +1,6 @@
 /* ============================================================================
- * MOTOR DE RENDERIZADO VISUAL ENRIQUECIDO POR BLOQUES WEB (Estilo NetSurf + Dark Glass)
+ * MOTOR DE RENDERIZADO VISUAL ENRIQUECIDO ESTILO NAVEGADOR WEB REAL (Chrome / NetSurf)
+ * Lienzo continuo blanco #FFFFFF, tipografía oscura #202124, enlaces en azul #0B0080
  * ============================================================================ */
 static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                                                    const char *article_body,
@@ -10,7 +11,8 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
     /* 1. Parsear el contenido estructurado en bloques */
     eonsurf_parse_content_into_blocks(article_body, article_title);
 
-    int cur_y = 150 - scroll_y;
+    int page_start_x = 52;
+    int cur_y = 126 - scroll_y;
     int base_start_y = cur_y;
     int link_idx = 0;
 
@@ -19,143 +21,154 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
         g_links[li].visible = 0;
     }
 
-    int card_w = content_max_x - 88;
-    if (card_w < 300) card_w = 300;
+    int web_col_w = content_max_x - page_start_x - 16;
+    if (web_col_w < 300) web_col_w = 300;
 
     for (int bi = 0; bi < g_web_block_count; bi++) {
         EonWebBlock *b = &g_web_blocks[bi];
-        int block_h = 48;
+        int block_h = 24;
 
         switch (b->type) {
             case BLOCK_HERO_HEADER: {
-                block_h = 58;
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    /* Tarjeta Hero Header con degradado neón */
-                    eonsurf_draw_web_card_box(fb, pitch, 88, cur_y, card_w, block_h, 0x182436, 0x00E5FF, 2, 0, 8);
-                    /* Barra de acento cian a la izquierda */
-                    for (int by = cur_y + 4; by < cur_y + block_h - 4; by++) {
-                        for (int bx = 90; bx < 96; bx++) mk_blend(fb, pitch, bx, by, 0x00E5FF, 255);
+                /* H1 Web Real: Gran encabezado editorial estilo Wikipedia / W3C */
+                block_h = 42;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    /* Título H1 en negro azabache tipográfico #1A1A1A (sin contorno) */
+                    eonsurf_draw_mockup_text(fb, pitch, page_start_x + 10, cur_y + 4, 26, b->text, 0x1A1A1A, 0, page_start_x + web_col_w);
+                    /* Línea sutil gris divisoria Wikipedia (#A2A9B1) debajo del H1 */
+                    int div_y = cur_y + 36;
+                    if (div_y >= 115 && div_y <= 660) {
+                        for (int lx = page_start_x + 8; lx < page_start_x + web_col_w; lx++) {
+                            fb[div_y * pitch + lx] = 0xFFA2A9B1;
+                        }
                     }
-                    /* Texto H1 grande */
-                    eonsurf_draw_mockup_text(fb, pitch, 108, cur_y + 14, 24, b->text, 0xFFFFFF, 1, 88 + card_w - 20);
                 }
-                cur_y += block_h + 14;
+                cur_y += block_h + 12;
                 break;
             }
             case BLOCK_SECTION_H2: {
-                block_h = 44;
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    eonsurf_draw_web_card_box(fb, pitch, 88, cur_y, card_w, block_h, 0x141E2B, 0x38BDF8, 1, 0, 6);
-                    /* Badge H2 */
-                    for (int by = cur_y + 10; by < cur_y + 34; by++) {
-                        for (int bx = 98; bx < 104; bx++) mk_blend(fb, pitch, bx, by, 0x38BDF8, 255);
+                /* H2 Web Real: Encabezado de sección con subrayado sutil */
+                block_h = 32;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    eonsurf_draw_mockup_text(fb, pitch, page_start_x + 10, cur_y + 4, 20, b->text, 0x050505, 0, page_start_x + web_col_w);
+                    int div_y = cur_y + 28;
+                    if (div_y >= 115 && div_y <= 660) {
+                        for (int lx = page_start_x + 10; lx < page_start_x + web_col_w - 20; lx++) {
+                            fb[div_y * pitch + lx] = 0xFFC8CCD1;
+                        }
                     }
-                    eonsurf_draw_mockup_text(fb, pitch, 114, cur_y + 12, 19, b->text, 0xF0F6FC, 1, 88 + card_w - 20);
                 }
                 cur_y += block_h + 10;
                 break;
             }
             case BLOCK_SUBSECTION_H3: {
-                block_h = 36;
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    eonsurf_draw_mockup_text(fb, pitch, 96, cur_y + 8, 17, b->text, 0x38BDF8, 1, 88 + card_w - 20);
-                    /* Línea sutil de subrayado */
-                    for (int lx = 96; lx < 88 + card_w - 20; lx++) mk_blend(fb, pitch, lx, cur_y + 32, 0x1E293B, 180);
+                /* H3 Web Real: Subtítulo 17px */
+                block_h = 26;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    eonsurf_draw_mockup_text(fb, pitch, page_start_x + 12, cur_y + 2, 17, b->text, 0x202124, 0, page_start_x + web_col_w);
                 }
                 cur_y += block_h + 8;
                 break;
             }
             case BLOCK_CODE_BOX: {
-                block_h = 52;
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    eonsurf_draw_web_card_box(fb, pitch, 88, cur_y, card_w, block_h, 0x0A0F18, 0x22C55E, 1, 0, 6);
-                    /* Insignia CODE */
-                    for (int by = cur_y + 6; by < cur_y + 24; by++) {
-                        for (int bx = 98; bx < 150; bx++) mk_blend(fb, pitch, bx, by, 0x14532D, 220);
+                /* Bloque de código con fondo grisáceo suave #F1F3F5 y borde sutil #D0D7DE */
+                block_h = 44;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    /* Caja de fondo gris código */
+                    for (int cy = cur_y; cy < cur_y + block_h; cy++) {
+                        if (cy < 115 || cy > 660) continue;
+                        for (int cx = page_start_x + 10; cx < page_start_x + web_col_w - 10; cx++) {
+                            fb[cy * pitch + cx] = 0xFFF6F8FA;
+                        }
                     }
-                    eonsurf_draw_mockup_text(fb, pitch, 104, cur_y + 8, 12, "CODE", 0x4ADE80, 0, 150);
-                    eonsurf_draw_mockup_text(fb, pitch, 160, cur_y + 16, 15, b->text, 0x86EFAC, 0, 88 + card_w - 20);
+                    /* Borde izquierdo azul/verde sutil */
+                    for (int cy = cur_y; cy < cur_y + block_h; cy++) {
+                        if (cy < 115 || cy > 660) continue;
+                        for (int cx = page_start_x + 10; cx < page_start_x + 14; cx++) {
+                            fb[cy * pitch + cx] = 0xFF0969DA;
+                        }
+                    }
+                    eonsurf_draw_mockup_text(fb, pitch, page_start_x + 24, cur_y + 12, 15, b->text, 0x1F2328, 0, page_start_x + web_col_w - 20);
                 }
                 cur_y += block_h + 10;
                 break;
             }
             case BLOCK_QUOTE_CALLOUT: {
-                block_h = 46;
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    eonsurf_draw_web_card_box(fb, pitch, 88, cur_y, card_w, block_h, 0x131924, 0xFACC15, 1, 0, 6);
-                    /* Barra dorada */
-                    for (int by = cur_y + 4; by < cur_y + block_h - 4; by++) {
-                        for (int bx = 90; bx < 96; bx++) mk_blend(fb, pitch, bx, by, 0xFACC15, 255);
+                /* Cita web: barra izquierda gris oscura #A2A9B1 y texto suave */
+                block_h = 36;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    for (int cy = cur_y; cy < cur_y + block_h; cy++) {
+                        if (cy < 115 || cy > 660) continue;
+                        for (int cx = page_start_x + 12; cx < page_start_x + 16; cx++) {
+                            fb[cy * pitch + cx] = 0xFF54595D;
+                        }
                     }
-                    eonsurf_draw_mockup_text(fb, pitch, 108, cur_y + 14, 15, b->text, 0xFEF08A, 0, 88 + card_w - 20);
+                    eonsurf_draw_mockup_text(fb, pitch, page_start_x + 26, cur_y + 8, 16, b->text, 0x404244, 0, page_start_x + web_col_w - 20);
                 }
-                cur_y += block_h + 10;
+                cur_y += block_h + 8;
                 break;
             }
             case BLOCK_NAV_BUTTONS: {
-                block_h = 42;
-                int is_hover = (cursor_x >= 88 && cursor_x <= 88 + card_w && cursor_y >= cur_y && cursor_y <= cur_y + block_h);
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    uint32_t btn_bg = is_hover ? 0x1E3A5F : 0x132235;
-                    uint32_t btn_border = is_hover ? 0x00FFFF : 0x38BDF8;
-                    eonsurf_draw_web_card_box(fb, pitch, 88, cur_y, card_w, block_h, btn_bg, btn_border, is_hover ? 2 : 1, is_hover, 6);
-                    
-                    /* Flechita / Pastilla interactiva */
-                    for (int dy = -4; dy <= 4; dy++) {
-                        for (int dx = 0; dx <= 5; dx++) {
-                            if (dx <= 4 - abs(dy)) {
-                                mk_blend(fb, pitch, 102 + dx, cur_y + 21 + dy, 0x38BDF8, 255);
+                /* Botón / Enlace Web de navegación: estilo pill o link azul interactivo */
+                block_h = 28;
+                int is_hover = (cursor_x >= page_start_x + 12 && cursor_x <= page_start_x + web_col_w - 20 &&
+                                cursor_y >= cur_y && cursor_y <= cur_y + block_h);
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    if (is_hover) {
+                        for (int by = cur_y; by < cur_y + block_h; by++) {
+                            if (by < 115 || by > 660) continue;
+                            for (int bx = page_start_x + 12; bx < page_start_x + web_col_w - 20; bx++) {
+                                fb[by * pitch + bx] = 0xFFEBF5FF;
                             }
                         }
                     }
-                    eonsurf_draw_mockup_text(fb, pitch, 118, cur_y + 12, 16, b->text, is_hover ? 0xFFFFFF : 0x7DD3FC, 1, 88 + card_w - 20);
-                    
+                    /* Punto viñeta */
+                    int dot_x = page_start_x + 18;
+                    int dot_y = cur_y + 13;
+                    for (int dy = -2; dy <= 2; dy++) {
+                        for (int dx = -2; dx <= 2; dx++) {
+                            if (dx * dx + dy * dy <= 4) {
+                                fb[(dot_y + dy) * pitch + (dot_x + dx)] = 0xFF3366CC;
+                            }
+                        }
+                    }
+                    eonsurf_draw_mockup_text(fb, pitch, page_start_x + 28, cur_y + 5, 16, b->text, is_hover ? 0x0B0080 : 0x3366CC, 0, page_start_x + web_col_w - 20);
+
                     /* Registrar colisión de enlace */
                     if (link_idx < g_link_count) {
-                        g_links[link_idx].x = 88;
+                        g_links[link_idx].x = page_start_x + 12;
                         g_links[link_idx].y = cur_y;
-                        g_links[link_idx].w = card_w;
+                        g_links[link_idx].w = web_col_w - 32;
                         g_links[link_idx].h = block_h;
                         g_links[link_idx].visible = 1;
                         link_idx++;
                     }
                 }
-                cur_y += block_h + 8;
+                cur_y += block_h + 6;
                 break;
             }
             case BLOCK_HR_DIVIDER: {
-                block_h = 16;
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    for (int lx = 88; lx < 88 + card_w; lx++) {
-                        float t = (float)(lx - 88) / (float)card_w;
-                        float edge_fade = sinf(t * 3.14159f);
-                        int alpha = (int)(edge_fade * 160.0f);
-                        mk_blend(fb, pitch, lx, cur_y + 8, 0x38BDF8, alpha);
+                block_h = 14;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    for (int lx = page_start_x + 10; lx < page_start_x + web_col_w; lx++) {
+                        fb[(cur_y + 6) * pitch + lx] = 0xFFD8DDE3;
                     }
                 }
                 cur_y += block_h;
                 break;
             }
             default: {
-                /* BLOCK_CARD_ARTICLE: Párrafo en tarjeta elegante con auto-wrapping */
+                /* BLOCK_CARD_ARTICLE: Párrafo web real fluido sin tarjeta oscura, texto tipográfico negro #202124 */
                 int text_len = strlen(b->text);
-                int est_lines = (text_len * 9) / (card_w - 40) + 1;
-                block_h = 24 + (est_lines * 22);
-                if (block_h < 44) block_h = 44;
+                int est_lines = (text_len * 9) / (web_col_w - 24) + 1;
+                block_h = 4 + (est_lines * 22);
 
-                int is_hover = (cursor_x >= 88 && cursor_x <= 88 + card_w && cursor_y >= cur_y && cursor_y <= cur_y + block_h);
-
-                if (cur_y + block_h >= 120 && cur_y <= 650) {
-                    uint32_t card_bg = is_hover ? 0x141E2C : 0x0E1622;
-                    uint32_t card_border = is_hover ? 0x00E5FF : 0x1E293B;
-                    eonsurf_draw_web_card_box(fb, pitch, 88, cur_y, card_w, block_h, card_bg, card_border, 1, is_hover, 6);
-
-                    /* Dibujar texto envuelto en líneas */
-                    int line_y = cur_y + 12;
+                if (cur_y + block_h >= 115 && cur_y <= 660) {
+                    int line_y = cur_y;
                     const char *tp = b->text;
                     char word[128];
-                    int pen_x = 104;
-                    int max_px = 88 + card_w - 20;
+                    int pen_x = page_start_x + 12;
+                    int max_px = page_start_x + web_col_w - 10;
 
                     while (*tp) {
                         if (*tp == '\x01' || *tp == '\x02') { tp++; continue; }
@@ -169,18 +182,19 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                         int word_w = wi * 9;
 
                         if (pen_x + word_w > max_px) {
-                            pen_x = 104;
+                            pen_x = page_start_x + 12;
                             line_y += 22;
                         }
 
-                        if (line_y >= 120 && line_y <= 645) {
-                            pen_x = eonsurf_draw_mockup_text(fb, pitch, pen_x, line_y, 16, word, is_hover ? 0xFFFFFF : 0xE2E8F0, 0, max_px);
+                        if (line_y >= 115 && line_y <= 655) {
+                            /* Texto del artículo en color negro web auténtico #202124 sin borde negro */
+                            pen_x = eonsurf_draw_mockup_text(fb, pitch, pen_x, line_y, 16, word, 0x202124, 0, max_px);
                         } else {
                             pen_x += word_w;
                         }
                     }
                 }
-                cur_y += block_h + 12;
+                cur_y += block_h + 10;
                 break;
             }
         }
@@ -188,7 +202,7 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
 
     /* Calcular scroll dinámico */
     int total_doc_h = cur_y - base_start_y;
-    int max_s = total_doc_h - 400;
+    int max_s = total_doc_h - 440;
     if (max_s < 0) max_s = 0;
     if (out_max_scroll) *out_max_scroll = max_s;
 }

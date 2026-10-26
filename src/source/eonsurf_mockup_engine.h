@@ -226,38 +226,25 @@ static inline void eonsurf_build_mockup_background(void) {
     g_mockup_bg_ready = 1;
 }
 
-/* Dibuja dinamicamente el lienzo de lectura que llena el espacio al ocultar la barra lateral o el dock */
+/* Dibuja el lienzo web real continuo (Viewport de fondo blanco auténtico #FFFFFF con borde gris sutil) */
 static inline void eonsurf_draw_content_backdrop(uint32_t *fb, int pitch, int max_x, int max_y) {
     int start_x = 48;
     int end_x = max_x + 12;
-    int start_y = 120;
+    int start_y = 114;
     int end_y = max_y;
-
-    float center_x = (float)(start_x + end_x) * 0.5f;
-    float center_y = (float)(start_y + end_y) * 0.4f;
-    float span_x = (float)(end_x - start_x) * 0.55f;
-    float span_y = (float)(end_y - start_y) * 0.55f;
 
     for (int y = start_y; y <= end_y; y++) {
         if ((unsigned)y >= 720) continue;
-        float dy = (float)(y - center_y) / span_y;
-        float dy2 = dy * dy;
-
         for (int x = start_x; x <= end_x; x++) {
             if ((unsigned)x >= 1280) continue;
 
-            float dx = (float)(x - center_x) / span_x;
-            float radial = 1.0f - sqrtf(dx * dx + dy2);
-            if (radial < 0.0f) radial = 0.0f;
-
-            /* Mezcla Dark Glass elegante con sutileza */
-            int base_alpha = 180 + (int)(radial * 40.0f);
-            uint32_t plate_rgb = (radial > 0.4f) ? 0x1A2535 : 0x111924;
-            mk_blend(fb, pitch, x, y, plate_rgb, base_alpha);
-
-            /* Borde superior con sutil reflejo especular */
-            if (y == start_y || y == start_y + 1) {
-                mk_blend(fb, pitch, x, y, 0x48A0D8, 120);
+            /* Borde perimetral gris claro #D0D7DE estilo ventana web de Chrome */
+            int is_border = (y == start_y || y == end_y || x == start_x || x == end_x);
+            if (is_border) {
+                fb[y * pitch + x] = 0xFFD0D7DE;
+            } else {
+                /* Fondo blanco limpio continuo auténtico del documento web */
+                fb[y * pitch + x] = 0xFFFFFFFF;
             }
         }
     }
@@ -530,34 +517,73 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_content_backdrop(fb, pitch, content_max_x, content_max_y);
 
     if (has_infobox) {
-        /* Columna Derecha (30% Infobox Dark Glass) */
-        eonsurf_draw_glass_panel(fb, pitch, 908, 120, 332, 525, 10, 0xFF1E2938, 0xFF111822, 0xFF0284C7, 240);
-        
-        int img_box_y = 138;
-        int img_box_h = 160;
-        rect_rounded(922, img_box_y, 304, img_box_h, 6, 0x000b0f17);
+        /* Columna Derecha: Ficha Técnica / Infobox auténtica de Wikipedia sobre fondo blanco */
+        int ib_x = 888;
+        int ib_y = 120;
+        int ib_w = 340;
+        int ib_h = content_max_y - 128;
 
-        if (strstr(current_url, "eonsurf://") != NULL || (!g_layout.infobox_rgba_tex)) {
-            /* Renderizado del chip 3D isométrico sci-fi */
-            eonsurf_draw_isometric_chip(fb, pitch, 1074, img_box_y + 80);
-            eonsurf_draw_mockup_text(fb, pitch, 988, 316, 22, "EonSurf Core", 0xFFFFFF, 1, 1180);
-        } else {
-            eonsurf_blit_infobox_image(fb, pitch, g_layout.infobox_rgba_tex, g_layout.img_w, g_layout.img_h,
-                                       926, img_box_y + 4, 296, img_box_h - 8);
-            eonsurf_draw_mockup_text(fb, pitch, 924, 316, 20, article_title, 0x00FFFFFF, 1, 1220);
+        /* Recuadro de la ficha técnica con fondo #F8F9FA y borde perimetral gris #A2A9B1 */
+        for (int py = ib_y; py < ib_y + ib_h; py++) {
+            if ((unsigned)py >= 720) continue;
+            for (int px = ib_x; px < ib_x + ib_w; px++) {
+                if ((unsigned)px >= 1280) continue;
+                int is_border = (py == ib_y || py == ib_y + ib_h - 1 || px == ib_x || px == ib_x + ib_w - 1);
+                fb[py * pitch + px] = is_border ? 0xFFA2A9B1 : 0xFFF8F9FA;
+            }
         }
 
-        /* 3. Infobox Derecha: Claves en blanco perla legible (0xFFE0EEF8) y valores en cian (0x48D8FF) */
-        int base_y = 368;
-        for (int i = 0; i < g_info_row_count && i < 5; i++) {
-            int ry = base_y + (i * 44);
-            for (int x = 922; x < 1222; x++) {
-                mk_blend(fb, pitch, x, ry - 6, 0x182838, 90);
+        /* Título de la ficha técnica centrado con fondo lavanda claro de Wikipedia (#CEE0F2) */
+        for (int py = ib_y + 1; py < ib_y + 34; py++) {
+            for (int px = ib_x + 1; px < ib_x + ib_w - 1; px++) {
+                fb[py * pitch + px] = 0xFFD8E4F0;
             }
-            /* Clave en Blanco Perla legible */
-            eonsurf_draw_mockup_text(fb, pitch, 930,  ry, 16, g_info_rows[i].key, 0xFFE0EEF8, 1, 1030);
-            /* Valor en Cian Neón vibrante */
-            eonsurf_draw_mockup_text(fb, pitch, 1040, ry, 16, g_info_rows[i].val, 0x48D8FF, 1, 1224);
+        }
+        eonsurf_draw_mockup_text(fb, pitch, ib_x + 14, ib_y + 8, 17, article_title, 0x10151C, 0, ib_x + ib_w - 14);
+
+        int img_box_y = ib_y + 42;
+        int img_box_h = 168;
+
+        /* Área de imagen centrada sobre fondo blanco */
+        for (int py = img_box_y; py < img_box_y + img_box_h; py++) {
+            for (int px = ib_x + 14; px < ib_x + ib_w - 14; px++) {
+                fb[py * pitch + px] = 0xFFFFFFFF;
+            }
+        }
+
+        if (g_layout.infobox_rgba_tex) {
+            eonsurf_blit_infobox_image(fb, pitch, g_layout.infobox_rgba_tex, g_layout.img_w, g_layout.img_h,
+                                       ib_x + 18, img_box_y + 4, ib_w - 36, img_box_h - 8);
+        } else {
+            /* Chip procedural elegante si es página de inicio o aún no descargó foto */
+            eonsurf_draw_isometric_chip(fb, pitch, ib_x + ib_w / 2, img_box_y + 84);
+        }
+
+        /* Tabla clave-valor de Wikipedia con filas alternadas y texto negro nítido */
+        int base_y = img_box_y + img_box_h + 10;
+        for (int i = 0; i < g_info_row_count && i < 6; i++) {
+            int ry = base_y + (i * 38);
+            if (ry + 36 >= ib_y + ib_h) break;
+
+            /* Fondo de celda de clave (#EAECF0) */
+            for (int fy = ry; fy < ry + 36; fy++) {
+                for (int fx = ib_x + 6; fx < ib_x + 130; fx++) {
+                    fb[fy * pitch + fx] = 0xFFEAECF0;
+                }
+                for (int fx = ib_x + 130; fx < ib_x + ib_w - 6; fx++) {
+                    fb[fy * pitch + fx] = (i % 2 == 0) ? 0xFFFFFFFF : 0xFFF8F9FA;
+                }
+                fb[fy * pitch + (ib_x + 130)] = 0xFFA2A9B1; /* Línea divisoria vertical */
+            }
+            /* Línea divisoria horizontal inferior */
+            for (int fx = ib_x + 6; fx < ib_x + ib_w - 6; fx++) {
+                fb[(ry + 35) * pitch + fx] = 0xFFA2A9B1;
+            }
+
+            /* Clave (th) en negro negrita #101418 */
+            eonsurf_draw_mockup_text(fb, pitch, ib_x + 10, ry + 10, 14, g_info_rows[i].key, 0x101418, 0, ib_x + 128);
+            /* Valor (td) en gris oscuro #202124 */
+            eonsurf_draw_mockup_text(fb, pitch, ib_x + 136, ry + 10, 14, g_info_rows[i].val, 0x202124, 0, ib_x + ib_w - 10);
         }
     }
 

@@ -82,21 +82,42 @@ static size_t img_curl_write_cb(void *contents, size_t size, size_t nmemb, void 
     return realsize;
 }
 
-/* Busca la primera URL de imagen (.png o .jpg) en el HTML o Markdown */
+/* Busca la primera URL de imagen (.png o .jpg) relevante en el HTML o Markdown */
 static inline int eonsurf_find_first_image_url(const char *raw_source, char *out_img_url, size_t max_len) {
     if (!raw_source || !out_img_url || max_len < 32) return 0;
 
-    /* 1. Soporte para miniaturas de Wikimedia (//thumb.wikimedia.org/ o //upload.wikimedia.org/) */
-    const char *wiki_img = strstr(raw_source, "//thumb.wikimedia.org/");
-    if (!wiki_img) wiki_img = strstr(raw_source, "//upload.wikimedia.org/");
-    if (wiki_img) {
-        const char *end = wiki_img;
-        while (*end && *end != '"' && *end != '\'' && *end != ' ' && *end != '>') end++;
-        size_t len = (size_t)(end - wiki_img);
-        if (len > 10 && len + 8 < max_len) {
-            snprintf(out_img_url, max_len, "https:%.*s", (int)len, wiki_img);
-            return 1;
+    /* 1. Priorizar fotos reales (.jpg/.jpeg) de Wikimedia o sitios web (evitar logotipos de 20px) */
+    const char *scan = raw_source;
+    while (scan && *scan) {
+        const char *m1 = strstr(scan, "//thumb.wikimedia.org/");
+        const char *m2 = strstr(scan, "//upload.wikimedia.org/");
+        const char *found = NULL;
+        if (m1 && m2) found = (m1 < m2) ? m1 : m2;
+        else if (m1) found = m1;
+        else if (m2) found = m2;
+        if (!found) break;
+
+        const char *end = found;
+        while (*end && *end != '"' && *end != '\'' && *end != ' ' && *end != '>' && *end != '&') end++;
+        size_t len = (size_t)(end - found);
+        if (len > 12 && len + 8 < max_len) {
+            char candidate[512] = "";
+            snprintf(candidate, sizeof(candidate), "https:%.*s", (int)len, found);
+            
+            /* Evitar iconos de botones, logos diminutos y SVG rasterizados miniatura */
+            if (strstr(candidate, "PlayStationTriangle") == NULL &&
+                strstr(candidate, "PlayStationCircle") == NULL &&
+                strstr(candidate, "PlayStationCross") == NULL &&
+                strstr(candidate, "PlayStationSquare") == NULL &&
+                strstr(candidate, "Wikidata") == NULL &&
+                strstr(candidate, "Commons-logo") == NULL &&
+                (strstr(candidate, ".jpg") != NULL || strstr(candidate, ".jpeg") != NULL || strstr(candidate, ".png") != NULL)) {
+                strncpy(out_img_url, candidate, max_len - 1);
+                out_img_url[max_len - 1] = '\0';
+                return 1;
+            }
         }
+        scan = end + 1;
     }
 
     /* 2. Soporte para etiquetas estándar <img ... src="..."> */
