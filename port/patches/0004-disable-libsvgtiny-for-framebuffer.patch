@@ -1,0 +1,9 @@
+--- a/Makefile
++++ b/Makefile
+@@ -69,5 +69,5 @@
+   NSBUILD_TARG := $(NSGENBIND_TARG)
+ else
+   ifeq ($(TARGET),framebuffer)
+-    NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_SVGTINY_TARG)  $(NSLIB_FB_TARG)
++    NSLIB_TARG := $(NSLIB_ALL_TARG) $(NSLIB_FB_TARG)
+     NSBUILD_TARG := $(NSGENBIND_TARG)
