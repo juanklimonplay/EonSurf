@@ -22,7 +22,18 @@ index f54326d..aaed99f 100644
  #undef HAVE_STRPTIME
  #undef HAVE_STRFTIME
  #else
-@@ -136,7 +136,7 @@ char *realpath(const char *path, char *resolved_path);
+@@ -112,6 +112,10 @@ char *realpath(const char *path, char *resolved_path);
+ #define HAVE_UTSNAME
+ #if (defined(_WIN32) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
+ #undef HAVE_UTSNAME
++#endif
++
++#if (defined(_WIN32) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
++#undef HAVE_SIGPIPE
+ #endif
+ 
+ #define HAVE_MMAP
+@@ -136,7 +140,7 @@ char *realpath(const char *path, char *resolved_path);
  #endif
  
  #define HAVE_MMAP
