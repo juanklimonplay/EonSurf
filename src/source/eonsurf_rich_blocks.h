@@ -157,8 +157,8 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                 cur_y += block_h;
                 break;
             }
-            default: {
-                /* BLOCK_CARD_ARTICLE: Párrafo web real fluido sin tarjeta oscura, texto tipográfico negro #202124 */
+            defau            default: {
+                /* BLOCK_CARD_ARTICLE: Párrafo web real fluido sin tarjeta oscura, texto tipográfico negro #202124 y enlaces en azul #3366CC / #0B0080 */
                 int text_len = strlen(b->text);
                 int est_lines = (text_len * 9) / (web_col_w - 24) + 1;
                 block_h = 4 + (est_lines * 22);
@@ -169,9 +169,29 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                     char word[128];
                     int pen_x = page_start_x + 12;
                     int max_px = page_start_x + web_col_w - 10;
+                    int in_link = 0;
+                    int link_start_x = 0;
 
                     while (*tp) {
-                        if (*tp == '\x01' || *tp == '\x02') { tp++; continue; }
+                        if (*tp == '\x01') {
+                            in_link = 1;
+                            link_start_x = pen_x;
+                            tp++;
+                            continue;
+                        }
+                        if (*tp == '\x02') {
+                            in_link = 0;
+                            if (link_idx < g_link_count && pen_x > link_start_x && line_y >= 115 && line_y <= 655) {
+                                g_links[link_idx].x = link_start_x;
+                                g_links[link_idx].y = line_y - 2;
+                                g_links[link_idx].w = pen_x - link_start_x;
+                                g_links[link_idx].h = 20;
+                                g_links[link_idx].visible = 1;
+                                link_idx++;
+                            }
+                            tp++;
+                            continue;
+                        }
                         if (*tp == ' ') { pen_x += 7; tp++; continue; }
 
                         int wi = 0;
@@ -182,13 +202,27 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                         int word_w = wi * 9;
 
                         if (pen_x + word_w > max_px) {
+                            if (in_link && link_idx < g_link_count && pen_x > link_start_x && line_y >= 115 && line_y <= 655) {
+                                g_links[link_idx].x = link_start_x;
+                                g_links[link_idx].y = line_y - 2;
+                                g_links[link_idx].w = pen_x - link_start_x;
+                                g_links[link_idx].h = 20;
+                                g_links[link_idx].visible = 1;
+                                link_idx++;
+                            }
                             pen_x = page_start_x + 12;
+                            link_start_x = pen_x;
                             line_y += 22;
                         }
 
                         if (line_y >= 115 && line_y <= 655) {
-                            /* Texto del artículo en color negro web auténtico #202124 sin borde negro */
-                            pen_x = eonsurf_draw_mockup_text(fb, pitch, pen_x, line_y, 16, word, 0x202124, 0, max_px);
+                            uint32_t text_col = 0x202124;
+                            if (in_link) {
+                                int is_hover = (cursor_x >= pen_x && cursor_x <= pen_x + word_w &&
+                                                cursor_y >= line_y - 2 && cursor_y <= line_y + 18);
+                                text_col = is_hover ? 0x0B0080 : 0x3366CC;
+                            }
+                            pen_x = eonsurf_draw_mockup_text(fb, pitch, pen_x, line_y, 16, word, text_col, 0, max_px);
                         } else {
                             pen_x += word_w;
                         }
@@ -196,8 +230,7 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                 }
                 cur_y += block_h + 10;
                 break;
-            }
-        }
+            }       }
     }
 
     /* Calcular scroll dinámico */

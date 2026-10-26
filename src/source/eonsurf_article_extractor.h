@@ -190,6 +190,11 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
                 if (!close_tag) close_tag = strstr(p, "</FOOTER>");
                 if (close_tag) { p = close_tag + 9; continue; } else break;
             }
+            if (strncasecmp(p, "<figure", 7) == 0) {
+                const char *close_tag = strstr(p, "</figure>");
+                if (!close_tag) close_tag = strstr(p, "</FIGURE>");
+                if (close_tag) { p = close_tag + 9; continue; } else break;
+            }
 
             /* Si estamos dentro de una tabla cualquiera, no dumpear texto desordenado al cuerpo */
             if (table_nest > 0) {

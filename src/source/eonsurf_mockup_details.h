@@ -117,20 +117,17 @@ static inline void eonsurf_draw_ps_emblem(uint32_t *fb, int pitch, int x, int y)
  * 3. LÍNEA HORIZONTAL CONTINUA CON GLOW QUE UNE LA PESTAÑA ACTIVA
  * ============================================================================ */
 static inline void eonsurf_draw_tab_baseline_glow(uint32_t *fb, int pitch, int active_tab_x, int active_tab_w) {
+    /* Lnea base de pestaas estilo Chrome oscuro: sutil #3C4043 que une la barra con la pestaa activa */
     int line_y = 50;
     for (int x = 0; x < 1280; x++) {
-        /* No dibuja la línea por debajo de la abertura de la pestaña activa */
-        if (x >= active_tab_x + 6 && x <= active_tab_x + active_tab_w - 6) continue;
-
-        /* En los bordes cercanos a la pestaña activa brilla en cian neón; lejos se atenúa */
-        int dist = (x < active_tab_x) ? (active_tab_x - x) : (x - (active_tab_x + active_tab_w));
-        int glow_a = 230 - (dist / 4);
-        if (glow_a < 70) glow_a = 70;
-
-        mk_blend(fb, pitch, x, line_y,     0x55E8FF, glow_a);
-        mk_blend(fb, pitch, x, line_y + 1, 0x00A8E8, glow_a / 2);
+        if (x >= active_tab_x && x <= active_tab_x + active_tab_w) {
+            /* Debajo de la pestaa activa el color es #2B2D30 para fundirse perfectamente */
+            fb[line_y * pitch + x] = 0xFF2B2D30;
+        } else {
+            fb[line_y * pitch + x] = 0xFF3C4043;
+        }
     }
-}
+}}
 
 /* ============================================================================
  * 4. CAJA DE FOCO / SELECCIÓN DETRÁS DEL PÁRRAFO BAJO EL CURSOR + CITAS [1]

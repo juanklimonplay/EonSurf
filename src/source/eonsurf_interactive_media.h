@@ -112,6 +112,21 @@ static inline int eonsurf_find_first_image_url(const char *raw_source, char *out
                 strstr(candidate, "Wikidata") == NULL &&
                 strstr(candidate, "Commons-logo") == NULL &&
                 (strstr(candidate, ".jpg") != NULL || strstr(candidate, ".jpeg") != NULL || strstr(candidate, ".png") != NULL)) {
+                /* Si Wikimedia entrega un thumbnail gigante de 1280px, reducirlo a 250px para RSX VRAM (140KB vs 3.5MB) */
+                char *px_pos = strstr(candidate, "/1280px-");
+                if (!px_pos) px_pos = strstr(candidate, "/800px-");
+                if (!px_pos) px_pos = strstr(candidate, "/640px-");
+                if (px_pos) {
+                    char opt_cand[512] = "";
+                    size_t p_prefix = (size_t)(px_pos - candidate);
+                    const char *p_suffix = strstr(px_pos + 1, "-");
+                    if (p_suffix) {
+                        snprintf(opt_cand, sizeof(opt_cand), "%.*s/250px%s", (int)p_prefix, candidate, p_suffix);
+                        strncpy(out_img_url, opt_cand, max_len - 1);
+                        out_img_url[max_len - 1] = '\0';
+                        return 1;
+                    }
+                }
                 strncpy(out_img_url, candidate, max_len - 1);
                 out_img_url[max_len - 1] = '\0';
                 return 1;

@@ -256,11 +256,10 @@ static inline void eonsurf_draw_content_backdrop(uint32_t *fb, int pitch, int ma
 
 static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y, int w, int h,
                                            const char *title, int is_active, int is_wiki) {
-    /* Pestanas modernas redondeadas ergonomicas tipo píldora */
-    int r = 10; /* Radio de curvatura superior */
-    uint32_t fill_top = is_active ? 0x1E293B : 0x0F172A;
-    uint32_t fill_bot = is_active ? 0x131D2A : 0x0A0F18;
-    uint32_t border_col = is_active ? 0x00E5FF : 0x2A3B50;
+    /* Pestanas Chrome modernas: Activa en gris elegante #2B2D30 que se une con la barra, Inactiva en #1E1F22 */
+    int r = 8;
+    uint32_t fill_col = is_active ? 0x2B2D30 : 0x1E1F22;
+    uint32_t border_col = is_active ? 0x3C4043 : 0x18191C;
 
     for (int py = y; py < y + h; py++) {
         for (int px = x; px < x + w; px++) {
@@ -283,31 +282,34 @@ static inline void eonsurf_draw_chrome_tab(uint32_t *fb, int pitch, int x, int y
             int is_border = is_top || is_left || is_right;
 
             if (is_border) {
-                mk_blend(fb, pitch, px, py, border_col, is_active ? 255 : 120);
+                mk_blend(fb, pitch, px, py, border_col, 255);
             } else {
-                float t = (float)(py - y) / (float)h;
-                uint32_t col = (t < 0.5f) ? fill_top : fill_bot;
-                mk_blend(fb, pitch, px, py, col, is_active ? 245 : 180);
+                mk_blend(fb, pitch, px, py, fill_col, 255);
             }
         }
     }
 
+    /* Icono limpio de la pestana: Wikipedia 'W' en un circulo blanco nitido */
     if (is_wiki) {
-        for (int iy = y + 11; iy < y + 31; iy++) {
-            for (int ix = x + 10; ix < x + 30; ix++) {
-                mk_blend(fb, pitch, ix, iy, 0xF0F4F8, 255);
+        int icon_cx = x + 18;
+        int icon_cy = y + 21;
+        int rad = 8;
+        for (int dy = -rad; dy <= rad; dy++) {
+            for (int dx = -rad; dx <= rad; dx++) {
+                if (dx * dx + dy * dy <= rad * rad) {
+                    mk_blend(fb, pitch, icon_cx + dx, icon_cy + dy, 0xFFFFFF, 255);
+                }
             }
         }
-        eonsurf_draw_mockup_text(fb, pitch, x + 13, y + 13, 15, "W", 0x10151C, 0, x + 32);
+        eonsurf_draw_mockup_text(fb, pitch, icon_cx - 4, icon_cy - 6, 12, "W", 0x10151C, 0, x + 32);
     } else {
-        /* Icono de Globo terraqueo Sci-Fi en azul cian centrado */
-        eonsurf_draw_globe_icon(fb, pitch, x + 20, y + 21);
+        eonsurf_draw_globe_icon(fb, pitch, x + 18, y + 21);
     }
 
-    /* Titulo de la pestana limpio sin numeracion y boton 'x' */
-    eonsurf_draw_mockup_text(fb, pitch, x + 36, y + 12, 16, title,
-                             is_active ? 0xFFFFFF : 0x94A3B8, 0, x + w - 28);
-    eonsurf_draw_mockup_text(fb, pitch, x + w - 22, y + 12, 15, "x", 0x64748B, 0, x + w - 6);
+    /* Titulo de la pestana limpio y boton 'x' para cerrar */
+    eonsurf_draw_mockup_text(fb, pitch, x + 32, y + 12, 15, title,
+                             is_active ? 0xFFFFFF : 0x9AA0A6, 0, x + w - 24);
+    eonsurf_draw_mockup_text(fb, pitch, x + w - 18, y + 12, 14, "x", 0x80868B, 0, x + w - 4);
 }
 
 static inline void eonsurf_draw_toolbar_icons(uint32_t *fb, int pitch) {
@@ -455,7 +457,7 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     eonsurf_draw_toolbar_icons(fb, pitch);
 
     /* Barra de URL superior (Pill neón en Y: 58-100, X: 182-965) */
-    eonsurf_draw_glowing_pill(fb, pitch, 182, 58, 783, 42, 0x0E1824, 0x20D8FF);
+    eonsurf_draw_glowing_pill(fb, pitch, 182, 58, 783, 42, 0x1F1F23, 0x3C4043);
     eonsurf_draw_https_padlock(fb, pitch, 202, 71);
     eonsurf_draw_mockup_text(fb, pitch, 228, 69, 18, current_url, 0xF0F6FC, 0, 955);
 
@@ -508,8 +510,8 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
 
     extern int g_sidebar_visible;
     extern int g_dock_visible;
-    /* La columna lateral solo se muestra si el usuario la tiene activa */
-    int has_infobox = g_sidebar_visible && (g_layout.infobox_rgba_tex != NULL || strstr(current_url, "wikipedia") != NULL);
+    /* La columna lateral flotante se muestra si el usuario la activo O si la pagina web tiene foto/infobox descargada */
+    int has_infobox = (g_sidebar_visible || g_layout.infobox_rgba_tex != NULL) && (g_layout.infobox_rgba_tex != NULL || strstr(current_url, "wikipedia") != NULL);
     int content_max_x = has_infobox ? 865 : 1220;
     int content_max_y = g_dock_visible ? 655 : 695;
 
