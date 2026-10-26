@@ -2,7 +2,7 @@ name: EonSurf PS3 CI/CD (Cell B.E. & PKG Builder)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feature/**" ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y texinfo flex bison libgmp-dev libelf-dev libmpfr-dev libmpc-dev \
-            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl
+            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl libhtml-parser-perl
 
       - name: 3. Preparar permisos para cache de ps3dev
         run: |
@@ -57,9 +57,24 @@ jobs:
           echo "${PS3DEV}/ppu/bin" >> $GITHUB_PATH
           echo "${PS3DEV}/spu/bin" >> $GITHUB_PATH
 
-      - name: 7. Descargar NetSurf libnsfb y preparar fuentes
+      - name: 7. Descargar NetSurf completo y compilar bibliotecas núcleo (HTML5 + CSS + DOM)
         run: |
-          bash port/fetch.sh port/work
+          export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin:${PS3DEV}/spu/bin
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev
+          PREFIX=/usr/local/ps3dev/portlibs/ppu
+          WORK_DIR="port/work"
+
+          echo "==> Descargando netsurf-all-3.11..."
+          bash port/fetch.sh "$WORK_DIR"
+          cd "${WORK_DIR}/netsurf-all-3.11"
+
+          echo "==> Instalando surface_ps3.c en libnsfb..."
+          cp ../../ps3/surface_ps3.c libnsfb/src/surface/ps3.c
+
+          echo "==> Probando compilación de librerías NetSurf para Cell B.E. (HOST=powerpc64-ps3-elf)..."
+          make TARGET=framebuffer HOST=powerpc64-ps3-elf Q= || true
+          ls -la inst-framebuffer/lib/ || true
 
       - name: 8. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
         run: |
@@ -69,11 +84,9 @@ jobs:
           PREFIX=/usr/local/ps3dev/portlibs/ppu
           WORK_DIR="port/work"
 
-          # Directorios de compilación y empaquetado
           mkdir -p build-eonsurf
           mkdir -p pkg_build/USRDIR
 
-          # Copiar recursos del paquete
           if [ -d "startpage" ]; then cp -r startpage pkg_build/USRDIR/; fi
           if [ -f "pkg/ICON0.PNG" ]; then
             cp pkg/ICON0.PNG pkg_build/ICON0.PNG
@@ -83,7 +96,6 @@ jobs:
           if [ -f "pkg/PIC1.PNG" ]; then cp pkg/PIC1.PNG pkg_build/PIC1.PNG; fi
           if [ -f "pkg/eonsurf.cfg" ]; then cp pkg/eonsurf.cfg pkg_build/USRDIR/; fi
 
-          # Flags de inclusión y librerías
           INC_FLAGS="-Isrc/source -Iport/ps3 -I${PSL1GHT}/include -I${PSL1GHT}/ppu/include -I${PREFIX}/include -I${WORK_DIR}/netsurf-all-3.11/libnsfb/include -I${WORK_DIR}/netsurf-all-3.11/libnsfb/src -I${WORK_DIR}/netsurf-all-3.11/libnsfb/src/plot"
           LIB_FLAGS="-L${PSL1GHT}/lib -L${PSL1GHT}/ppu/lib -L${PREFIX}/lib"
 
@@ -103,7 +115,6 @@ jobs:
             ${NSFB_DIR}/src/plot/8bpp.c
           "
 
-          # Compilación de objetos C con Cell B.E. y AltiVec
           echo "[CC] Compilando fuentes EonSurf y libnsfb..."
           for src_file in src/source/main.c port/ps3/osk_ps3.c port/ps3/surface_ps3.c ${NSFB_SOURCES}; do
             obj_file="build-eonsurf/$(basename "${src_file%.c}.o")"
@@ -111,7 +122,6 @@ jobs:
               ${INC_FLAGS} -c "${src_file}" -o "${obj_file}"
           done
 
-          # Enlazar ELF con jerarquía Lv2 estricta y resolver dependencias circulares
           echo "[LD] Enlazando EonSurf.elf..."
           powerpc64-ps3-elf-gcc build-eonsurf/*.o \
             ${LIB_FLAGS} \
@@ -119,13 +129,11 @@ jobs:
             -Wl,--start-group -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lnet -lsysutil -lsysmodule -lm -lrt -llv2 -Wl,--end-group \
             -o build-eonsurf/EonSurf.elf
 
-          # Resolver stubs de la tabla OPD
           if command -v sprxlinker >/dev/null 2>&1; then
             echo "[OPD] Ejecutando sprxlinker..."
             sprxlinker build-eonsurf/EonSurf.elf
           fi
 
-          # Generar binarios EBOOT y firmar
           if command -v make_fself >/dev/null 2>&1; then
             make_fself build-eonsurf/EonSurf.elf build-eonsurf/EBOOT.BIN || true
           elif command -v fself >/dev/null 2>&1; then
@@ -140,19 +148,16 @@ jobs:
             cp build-eonsurf/EonSurf.elf pkg_build/USRDIR/EBOOT.BIN
           fi
 
-          # Asegurar copia en build-eonsurf para artefactos de RPCS3
           if [ -f "pkg_build/USRDIR/EBOOT.BIN" ] && [ ! -f "build-eonsurf/EBOOT.BIN" ]; then
             cp pkg_build/USRDIR/EBOOT.BIN build-eonsurf/EBOOT.BIN
           fi
 
-          # Generar PARAM.SFO obligatorio para evitar error 80029564 en PS3
           if command -v sfo.py >/dev/null 2>&1; then
             sfo.py --title "${APP_TITLE}" --appid "${TITLE_ID}" -f src/pkg/sfo.xml pkg_build/PARAM.SFO || true
           elif command -v sfo >/dev/null 2>&1; then
             sfo --title "${APP_TITLE}" --appid "${TITLE_ID}" -f src/pkg/sfo.xml pkg_build/PARAM.SFO || true
           fi
 
-          # Empaquetar el .pkg final
           if command -v pkg.py >/dev/null 2>&1; then
             pkg.py --contentid "${CONTENT_ID}" pkg_build/ EonSurf-v0.3.1-alpha.pkg
           elif command -v pkg_builder >/dev/null 2>&1; then
