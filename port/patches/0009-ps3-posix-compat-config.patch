@@ -1,0 +1,31 @@
+diff --git a/netsurf/utils/config.h b/netsurf/utils/config.h
+index f54326d..aaed99f 100644
+--- a/netsurf/utils/config.h
++++ b/netsurf/utils/config.h
+@@ -63,7 +63,7 @@ char *strcasestr(const char *haystack, const char *needle);
+      defined(__BEOS__) ||     \
+      defined(__amigaos4__) || \
+      defined(__AMIGA__) ||    \
+-     defined(__MINT__))
++     defined(__MINT__) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
+ #undef HAVE_STRPTIME
+ #undef HAVE_STRFTIME
+ #else
+@@ -136,7 +136,7 @@ char *realpath(const char *path, char *resolved_path);
+ #endif
+ 
+ #define HAVE_MMAP
+-#if (defined(_WIN32) || defined(__riscos__) || defined(__HAIKU__) || defined(__BEOS__) || defined(__amigaos4__) || defined(__AMIGA__) || defined(__MINT__))
++#if (defined(_WIN32) || defined(__riscos__) || defined(__HAIKU__) || defined(__BEOS__) || defined(__amigaos4__) || defined(__AMIGA__) || defined(__MINT__) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
+ #undef HAVE_MMAP
+ #endif
+ 
+@@ -149,7 +149,7 @@ char *realpath(const char *path, char *resolved_path);
+ #define HAVE_DIRFD
+ #define HAVE_UNLINKAT
+ #define HAVE_FSTATAT
+-#if (defined(_WIN32) || defined(__riscos__) || defined(__HAIKU__) || defined(__BEOS__) || defined(__amigaos4__) || defined(__AMIGA__) || defined(__MINT__))
++#if (defined(_WIN32) || defined(__riscos__) || defined(__HAIKU__) || defined(__BEOS__) || defined(__amigaos4__) || defined(__AMIGA__) || defined(__MINT__) || defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__))
+ #undef HAVE_DIRFD
+ #undef HAVE_UNLINKAT
+ #undef HAVE_FSTATAT
