@@ -16,6 +16,8 @@ if [ ! -d netsurf-all-$VER ]; then
         patch -p1 -d netsurf-all-$VER -N < "$p"
       elif patch -p1 -d netsurf-all-$VER/netsurf --dry-run < "$p" > /dev/null 2>&1; then
         patch -p1 -d netsurf-all-$VER/netsurf -N < "$p"
+      elif patch -p1 -d netsurf-all-$VER/libnsfb --dry-run < "$p" > /dev/null 2>&1; then
+        patch -p1 -d netsurf-all-$VER/libnsfb -N < "$p"
       else
         echo "Aviso: no se pudo aplicar parche $p limpiamente"
       fi

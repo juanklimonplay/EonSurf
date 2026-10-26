@@ -1,14 +1,8 @@
---- a/libnsfb/src/plot.h
-+++ b/libnsfb/src/plot.h
-@@ -46,7 +46,12 @@
- #if defined(__APPLE__)
-     #include <machine/endian.h>
- #else
-+  #if defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__)
-+    #define BYTE_ORDER 4321
-+    #define BIG_ENDIAN 4321
-+    #define LITTLE_ENDIAN 1234
-+  #else
-     #include <endian.h>
-+  #endif
- #endif
+--- a/src/plot.h
++++ b/src/plot.h
+@@ -45,2 +45,5 @@
+ #elif defined(__APPLE__)
++    /* mac os x has the include somewhere different */
++#elif defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__)
++    #define NSFB_BE_BYTE_ORDER
+ #elif defined(__FreeBSD__)
