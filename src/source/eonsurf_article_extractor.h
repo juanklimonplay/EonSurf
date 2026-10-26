@@ -124,7 +124,7 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
      * saltamos completamente la tabla de infobox hasta su cierre </table>.
      */
     /* En articulos de Wikipedia, la infobox inicial se descarta solo si es especificamente class="infobox" */
-    const char *check_infobox = strstr(body_ptr, "class="infobox"");
+    const char *check_infobox = strstr(body_ptr, "class=\"infobox\"");
     if (check_infobox && (check_infobox - body_ptr) < 15000) {
         const char *scan = check_infobox;
         const char *ib_end = strstr(scan, "</table>");
