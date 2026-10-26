@@ -123,13 +123,32 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
      * Si detectamos <table dentro de los primeros 30.000 bytes de mw-parser-output,
      * saltamos completamente la tabla de infobox hasta su cierre </table>.
      */
-    /* En articulos de Wikipedia, la infobox inicial se descarta solo si es especificamente class="infobox" */
+    /* En articulos de Wikipedia, la infobox contiene tablas anidadas y pie de Wikidata.
+     * Balanceamos <table y </table> para saltarla completamente hasta el primer parrafo. */
     const char *check_infobox = strstr(body_ptr, "class=\"infobox\"");
     if (check_infobox && (check_infobox - body_ptr) < 15000) {
-        const char *scan = check_infobox;
-        const char *ib_end = strstr(scan, "</table>");
-        if (ib_end && (ib_end - scan) < 50000) {
-            body_ptr = ib_end + 8;
+        const char *t_start = check_infobox;
+        while (t_start > body_ptr && strncmp(t_start, "<table", 6) != 0) {
+            t_start--;
+        }
+        if (strncmp(t_start, "<table", 6) == 0) {
+            int table_depth = 0;
+            const char *scan = t_start;
+            while (*scan && (scan - t_start) < 65000) {
+                if (strncasecmp(scan, "<table", 6) == 0) {
+                    table_depth++;
+                    scan += 6;
+                } else if (strncasecmp(scan, "</table>", 8) == 0) {
+                    table_depth--;
+                    scan += 8;
+                    if (table_depth <= 0) {
+                        body_ptr = scan;
+                        break;
+                    }
+                } else {
+                    scan++;
+                }
+            }
         }
     }
 
@@ -323,6 +342,17 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
             }
             p += ent_len;
             continue;
+        }
+
+        /* Filtrar caracteres CJK (Japones / Chino / Coreano) si el font no tiene glifos para evitar cajas [00000000] */
+        const uint8_t *up = (const uint8_t *)p;
+        if ((up[0] & 0xF0) == 0xE0 && (up[1] & 0xC0) == 0x80 && (up[2] & 0xC0) == 0x80) {
+            uint32_t cp = ((up[0] & 0x0F) << 12) | ((up[1] & 0x3F) << 6) | (up[2] & 0x3F);
+            /* Rango CJK Ideographs / Hiragana / Katakana: 0x2E80 a 0x9FFF, 0xAC00 a 0xD7AF, 0xFF00 a 0xFFEF */
+            if ((cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xFF00 && cp <= 0xFFEF)) {
+                p += 3;
+                continue;
+            }
         }
 
         if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
