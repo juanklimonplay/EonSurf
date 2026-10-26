@@ -1,8 +1,0 @@
---- a/Makefile
-+++ b/Makefile
-@@ -121,4 +121,4 @@
- 	mkdir -p $(TMP_PREFIX)/bin
- 	$(foreach L,$(NSLIB_TARG),$(call do_prefix_install,$(L)))
- 	$(foreach L,$(NSBUILD_TARG),$(call do_build_prefix_install,$(L)))
--	$(MAKE) --directory=$(NETSURF_TARG) PREFIX=$(PREFIX) TARGET=$(TARGET) $(NETSURF_CONFIG)
-+	$(MAKE) --directory=$(NETSURF_TARG) PREFIX=$(PREFIX) TARGET=$(TARGET) HOST=$(HOST) $(NETSURF_CONFIG)

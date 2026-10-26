@@ -1,0 +1,14 @@
+--- a/libnsfb/src/plot.h
++++ b/libnsfb/src/plot.h
+@@ -46,7 +46,12 @@
+ #if defined(__APPLE__)
+     #include <machine/endian.h>
+ #else
++  #if defined(__PS3__) || defined(__CELLOS_LV2__) || defined(__powerpc__)
++    #define BYTE_ORDER 4321
++    #define BIG_ENDIAN 4321
++    #define LITTLE_ENDIAN 1234
++  #else
+     #include <endian.h>
++  #endif
+ #endif
