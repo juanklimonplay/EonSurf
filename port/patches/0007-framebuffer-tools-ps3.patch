@@ -2,7 +2,7 @@ diff --git a/netsurf/frontends/framebuffer/Makefile.tools b/netsurf/frontends/fr
 index 80623b1..95c920b 100644
 --- a/netsurf/frontends/framebuffer/Makefile.tools
 +++ b/netsurf/frontends/framebuffer/Makefile.tools
-@@ -3,6 +3,14 @@
+@@ -3,6 +3,15 @@
  ## tool setup for the framebuffer target
  ##
  
@@ -11,6 +11,7 @@ index 80623b1..95c920b 100644
 +  CXX := powerpc64-ps3-elf-g++
 +  AR := powerpc64-ps3-elf-ar
 +  override NETSURF_USE_OPENSSL := NO
++  override NETSURF_USE_PNG := NO
 +  CFLAGS += -std=gnu99 -DNO_IPV6 -DPATH_MAX=1024 -UHAVE_UTSNAME -UHAVE_SIGPIPE -I$(PS3DEV)/portlibs/ppu/include -I$(PS3DEV)/include -I$(PS3DEV)/ppu/include
 +  LDFLAGS += -L$(PS3DEV)/portlibs/ppu/lib -L$(PS3DEV)/lib -L$(PS3DEV)/ppu/lib -lrsx -lgcm_sys -lio -lnet -lsysutil -lsysmodule -lmbedtls -lmbedx509 -lmbedcrypto -lz -lm -lrt -llv2
 +endif

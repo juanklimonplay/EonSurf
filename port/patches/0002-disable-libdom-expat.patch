@@ -16,3 +16,12 @@
    DIR_SOURCES := expat_xmlparser.c
  
    LDFLAGS := $(LDFLAGS) -lexpat
+--- a/libdom/Makefile
++++ b/libdom/Makefile
+@@ -160,5 +160,5 @@
+ endif
+ 
+-ifeq ($(WITH_EXPAT_BINDING),yes)
++ifeq ($(WITH_EXPAT_BINDING),enabled_explicitly)
+   REQUIRED_LIBS := $(REQUIRED_LIBS) expat
+ endif
