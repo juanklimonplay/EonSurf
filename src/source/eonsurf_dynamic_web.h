@@ -440,8 +440,8 @@ static inline int eonsurf_parse_wikipedia_search_results(const char *raw_html, c
     const char *p = raw_html;
     int count = 0;
 
-    while ((p = strstr(p, "class="mw-search-result-heading"")) != NULL && count < 15 && di + 300 < max_len) {
-        const char *a_start = strstr(p, "<a href="");
+    while ((p = strstr(p, "class=\"mw-search-result-heading\"")) != NULL && count < 15 && di + 300 < max_len) {
+        const char *a_start = strstr(p, "<a href=\"");
         if (a_start && (a_start - p) < 60) {
             a_start += 9;
             const char *a_href_end = strchr(a_start, '"');
