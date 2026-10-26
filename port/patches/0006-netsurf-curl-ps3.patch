@@ -1,13 +1,16 @@
 diff --git a/netsurf/Makefile b/netsurf/Makefile
-index 05cb03e..644a337 100644
+index 05cb03e..03df213 100644
 --- a/netsurf/Makefile
 +++ b/netsurf/Makefile
-@@ -162,7 +162,7 @@ NETSURF_FEATURE_ROSPRITE_CFLAGS := -DWITH_NSSPRITE
+@@ -162,7 +162,10 @@ NETSURF_FEATURE_ROSPRITE_CFLAGS := -DWITH_NSSPRITE
  #  resolved by the subsequent openssl
  
  # freemint does not support pkg-config for libcurl
 -ifeq ($(HOST),mint)
-+ifneq (,$(filter $(HOST),mint powerpc64-ps3-elf))
++ifeq ($(HOST),powerpc64-ps3-elf)
++    CFLAGS += -I$(PS3DEV)/portlibs/ppu/include
++    LDFLAGS += -L$(PS3DEV)/portlibs/ppu/lib -lcurl
++else ifeq ($(HOST),mint)
      CFLAGS += $(shell curl-config --cflags)
      LDFLAGS += $(shell curl-config --libs)
  else

@@ -1,0 +1,18 @@
+diff --git a/netsurf/frontends/framebuffer/Makefile.tools b/netsurf/frontends/framebuffer/Makefile.tools
+index 80623b1..82a1fb9 100644
+--- a/netsurf/frontends/framebuffer/Makefile.tools
++++ b/netsurf/frontends/framebuffer/Makefile.tools
+@@ -3,6 +3,13 @@
+ ## tool setup for the framebuffer target
+ ##
+ 
++ifeq ($(HOST),powerpc64-ps3-elf)
++  CC := powerpc64-ps3-elf-gcc
++  CXX := powerpc64-ps3-elf-g++
++  AR := powerpc64-ps3-elf-ar
++  CFLAGS += -I$(PS3DEV)/portlibs/ppu/include -I$(PS3DEV)/include -I$(PS3DEV)/ppu/include
++  LDFLAGS += -L$(PS3DEV)/portlibs/ppu/lib -L$(PS3DEV)/lib -L$(PS3DEV)/ppu/lib
++endif
+ ifeq ($(origin GCCSDK_INSTALL_ENV),undefined)
+   PKG_CONFIG := pkg-config
+ else
