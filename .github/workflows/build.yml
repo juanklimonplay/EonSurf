@@ -76,6 +76,10 @@ jobs:
           make TARGET=framebuffer HOST=powerpc64-ps3-elf NETSURF_FB_FONTLIB=internal Q= || true
           ls -la inst-framebuffer/lib/ || true
           ls -la netsurf/ || true
+          if [ -f "netsurf/nsfb" ]; then
+            echo "[OK] netsurf/nsfb compilado exitosamente!"
+            ls -lh netsurf/nsfb
+          fi
 
       - name: 8. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
         run: |
