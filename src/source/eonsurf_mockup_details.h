@@ -127,7 +127,7 @@ static inline void eonsurf_draw_tab_baseline_glow(uint32_t *fb, int pitch, int a
             fb[line_y * pitch + x] = 0xFF3C4043;
         }
     }
-}}
+}
 
 /* ============================================================================
  * 4. CAJA DE FOCO / SELECCIÓN DETRÁS DEL PÁRRAFO BAJO EL CURSOR + CITAS [1]

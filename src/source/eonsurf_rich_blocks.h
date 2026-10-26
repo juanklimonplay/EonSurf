@@ -157,7 +157,7 @@ static inline void eonsurf_render_rich_web_blocks(uint32_t *fb, int pitch,
                 cur_y += block_h;
                 break;
             }
-            defau            default: {
+            default: {
                 /* BLOCK_CARD_ARTICLE: Párrafo web real fluido sin tarjeta oscura, texto tipográfico negro #202124 y enlaces en azul #3366CC / #0B0080 */
                 int text_len = strlen(b->text);
                 int est_lines = (text_len * 9) / (web_col_w - 24) + 1;
