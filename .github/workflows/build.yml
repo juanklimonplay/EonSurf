@@ -120,19 +120,24 @@ jobs:
             ${NSFB_DIR}/src/plot/8bpp.c
           "
 
-          echo "[CC] Compilando fuentes EonSurf y libnsfb..."
-          for src_file in src/source/main.c port/ps3/osk_ps3.c port/ps3/surface_ps3.c ${NSFB_SOURCES}; do
-            obj_file="build-eonsurf/$(basename "${src_file%.c}.o")"
-            powerpc64-ps3-elf-gcc -O2 -mcpu=cell -maltivec -mabi=altivec -DNSFB_PS3_AVAILABLE -Wall \
-              ${INC_FLAGS} -c "${src_file}" -o "${obj_file}"
-          done
+          if [ -f "${WORK_DIR}/netsurf-all-3.11/netsurf/nsfb" ]; then
+            echo "[OK] netsurf/nsfb compilado! Preparando binario principal EonSurf..."
+            cp "${WORK_DIR}/netsurf-all-3.11/netsurf/nsfb" build-eonsurf/EonSurf.elf
+          else
+            echo "[CC] Compilando fuentes EonSurf y libnsfb..."
+            for src_file in src/source/main.c port/ps3/osk_ps3.c port/ps3/surface_ps3.c ${NSFB_SOURCES}; do
+              obj_file="build-eonsurf/$(basename "${src_file%.c}.o")"
+              powerpc64-ps3-elf-gcc -O2 -mcpu=cell -maltivec -mabi=altivec -DNSFB_PS3_AVAILABLE -Wall \
+                ${INC_FLAGS} -c "${src_file}" -o "${obj_file}"
+            done
 
-          echo "[LD] Enlazando EonSurf.elf..."
-          powerpc64-ps3-elf-gcc build-eonsurf/*.o \
-            ${LIB_FLAGS} \
-            -lrsx -lgcm_sys -lio -lfont -laudio \
-            -Wl,--start-group -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lnet -lsysutil -lsysmodule -lm -lrt -llv2 -Wl,--end-group \
-            -o build-eonsurf/EonSurf.elf
+            echo "[LD] Enlazando EonSurf.elf..."
+            powerpc64-ps3-elf-gcc build-eonsurf/*.o \
+              ${LIB_FLAGS} \
+              -lrsx -lgcm_sys -lio -lfont -laudio \
+              -Wl,--start-group -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lnet -lsysutil -lsysmodule -lm -lrt -llv2 -Wl,--end-group \
+              -o build-eonsurf/EonSurf.elf
+          fi
 
           if command -v sprxlinker >/dev/null 2>&1; then
             echo "[OPD] Ejecutando sprxlinker..."

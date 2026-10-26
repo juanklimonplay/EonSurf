@@ -1,0 +1,15 @@
+diff --git a/netsurf/frontends/framebuffer/Makefile b/netsurf/frontends/framebuffer/Makefile
+index 7408f0c..a70447a 100644
+--- a/netsurf/frontends/framebuffer/Makefile
++++ b/netsurf/frontends/framebuffer/Makefile
+@@ -55,6 +55,10 @@ LDFLAGS += -Wl,--whole-archive
+ $(eval $(call pkg_config_find_and_add,libnsfb,libnsfb))
+ LDFLAGS += -Wl,--no-whole-archive
+ 
++ifeq ($(HOST),powerpc64-ps3-elf)
++  LDFLAGS += -Wl,--start-group -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lsysutil -lsysmodule -liconv -lz -lm -lrt -llv2 -Wl,--end-group
++endif
++
+ # ---------------------------------------------------------------------------
+ # Target setup
+ # ---------------------------------------------------------------------------
