@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y texinfo flex bison libgmp-dev libelf-dev libmpfr-dev libmpc-dev \
-            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl libhtml-parser-perl
+            zlib1g-dev bzip2 xz-utils patch libtool-bin autoconf automake pkg-config python3-dev wget libncurses-dev gperf perl libhtml-parser-perl libpng-dev
 
       - name: 3. Preparar permisos para cache de ps3dev
         run: |
@@ -57,7 +57,7 @@ jobs:
           echo "${PS3DEV}/ppu/bin" >> $GITHUB_PATH
           echo "${PS3DEV}/spu/bin" >> $GITHUB_PATH
 
-      - name: 7. Descargar NetSurf completo y compilar bibliotecas núcleo (HTML5 + CSS + DOM)
+      - name: 7. Compilar NetSurf completo (HTML5 + CSS + DOM + Framebuffer) para PS3
         run: |
           export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin:${PS3DEV}/spu/bin
           export PS3DEV=/usr/local/ps3dev
@@ -65,16 +65,17 @@ jobs:
           PREFIX=/usr/local/ps3dev/portlibs/ppu
           WORK_DIR="port/work"
 
-          echo "==> Descargando netsurf-all-3.11..."
+          echo "==> Descargando y parchando netsurf-all-3.11..."
           bash port/fetch.sh "$WORK_DIR"
           cd "${WORK_DIR}/netsurf-all-3.11"
 
-          echo "==> Instalando surface_ps3.c en libnsfb..."
+          echo "==> Copiando driver surface_ps3.c a libnsfb..."
           cp ../../ps3/surface_ps3.c libnsfb/src/surface/ps3.c
 
-          echo "==> Probando compilación de librerías NetSurf para Cell B.E. (HOST=powerpc64-ps3-elf)..."
-          make TARGET=framebuffer HOST=powerpc64-ps3-elf Q= || true
+          echo "==> Compilando stack completo de NetSurf para Cell B.E. (HOST=powerpc64-ps3-elf)..."
+          make TARGET=framebuffer HOST=powerpc64-ps3-elf NETSURF_FB_FONTLIB=internal Q= || true
           ls -la inst-framebuffer/lib/ || true
+          ls -la netsurf/ || true
 
       - name: 8. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
         run: |

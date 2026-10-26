@@ -1,0 +1,18 @@
+--- a/libdom/bindings/xml/Makefile
++++ b/libdom/bindings/xml/Makefile
+@@ -1,4 +1,5 @@
+-ifeq ($(WITH_LIBXML_BINDING),yes)
++# En PS3 no se compila el parser expat/libxml por defecto (usamos hubbub para HTML5 completo)
++ifeq ($(WITH_LIBXML_BINDING),enabled_explicitly)
+   DIR_SOURCES := libxml_xmlparser.c
+ 
+   # LibXML2
+@@ -17,7 +18,7 @@
+   DO_XML_INSTALL := yes
+ endif
+ 
+-ifeq ($(WITH_EXPAT_BINDING),yes)
++ifeq ($(WITH_EXPAT_BINDING),enabled_explicitly)
+   DIR_SOURCES := expat_xmlparser.c
+ 
+   LDFLAGS := $(LDFLAGS) -lexpat
