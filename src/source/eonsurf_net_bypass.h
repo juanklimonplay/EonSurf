@@ -10,16 +10,24 @@
  * ============================================================================ */
 
 static const char *EONSURF_PORTAL_MARKDOWN =
-    "Bienvenido al motor nativo Dark Glass corriendo sobre el silicio Cell B.E. a 60 FPS.\n\n"
-    "## Accesos Directos de la Scene PS3 (Presiona X sobre un enlace)\n"
-    " - [PlayStation 3 en Wikipedia](https://es.wikipedia.org/wiki/PlayStation_3)\n"
-    " - [Procesador Cell Broadband Engine](https://es.wikipedia.org/wiki/Cell_(microprocesador))\n"
-    " - [Documentacion Oficial webMAN MOD](https://raw.githubusercontent.com/aldostools/webMAN-MOD/master/README.md)\n"
-    " - [Repositorio PSL1GHT SDK](https://raw.githubusercontent.com/ps3dev/PSL1GHT/master/README.md)\n\n"
-    "## Estado del Motor EonSurf Core\n"
-    " - Renderizador TrueType con Anti-Aliasing y Sombra Sub-pixel activo.\n"
-    " - Descargador directo de paquetes .PKG hacia /dev_hdd0/packages/ listo.\n"
-    " - Presiona Triangulo para buscar en la Web o escribir cualquier URL.";
+    "# EonSurf Search & Web Portal\n\n"
+    "Bienvenido al navegador web para PlayStation 3. Presiona **TRIANGULO** o haz clic en la barra superior para escribir una direccion o buscar en la Web.\n\n"
+    "## Buscadores y Portales Web (Presiona X para navegar)\n"
+    " - [Buscar en Google (DuckDuckGo Lite)](https://lite.duckduckgo.com/lite/?q=playstation+3)\n"
+    " - [Wikipedia en Espanol - Portada](https://es.wikipedia.org/wiki/Wikipedia:Portada)\n"
+    " - [Buscar en Wikipedia: PlayStation 3](https://es.wikipedia.org/w/index.php?search=playstation+3)\n"
+    " - [Buscar en Wikipedia: Videojuegos](https://es.wikipedia.org/wiki/Videojuego)\n"
+    " - [Hacker News (Noticias de Tecnologia)](https://news.ycombinator.com)\n\n"
+    "## Scene PlayStation 3 & Homebrew\n"
+    " - [webMAN-MOD Oficial (Guia y Manual)](https://raw.githubusercontent.com/aldostools/webMAN-MOD/master/README.md)\n"
+    " - [SDK Abierto PSL1GHT](https://raw.githubusercontent.com/ps3dev/PSL1GHT/master/README.md)\n"
+    " - [Explorador Local HDD (/dev_hdd0/)](file:///dev_hdd0/)\n\n"
+    "## Controles del Navegador\n"
+    " - **Triangulo**: Abrir Teclado en Pantalla para escribir cualquier direccion o busqueda.\n"
+    " - **L1 / R1**: Cambiar entre pestanas abiertas.\n"
+    " - **Stick Derecho / L2 / R2**: Desplazamiento vertical (Scroll fluido).\n"
+    " - **Cruz (X)**: Hacer clic en enlaces, pestanas o arrastrar la barra de scroll.\n"
+    " - **Circulo (O)**: Volver a la pagina anterior (Atras).";
 
 /* 
  * Corrige eonsurf_build_search_url:

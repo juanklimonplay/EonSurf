@@ -331,149 +331,162 @@ static inline void eonsurf_build_search_url(const char *user_input, char *out_ur
  */
 
 static inline int eonsurf_parse_duckduckgo_results(const char *raw_html, char *out_markdown, size_t max_len) {
-
-    if (!strstr(raw_html, "result__a")) return 0; /* No es una página de búsqueda */
-
-
+    if (!strstr(raw_html, "result-link") && !strstr(raw_html, "result__a")) return 0;
 
     size_t di = 0;
-
     di += snprintf(out_markdown, max_len, "# Resultados de Busqueda en Vivo (EonSurf Search)\n\n");
 
-
-
     const char *p = raw_html;
-
     int count = 0;
 
+    while (*p && count < 15 && di + 300 < max_len) {
+        /* Buscar tanto clase 'result-link' de DuckDuckGo Lite como 'result__a' de version HTML */
+        const char *m1 = strstr(p, "class='result-link'");
+        const char *m2 = strstr(p, "class="result-link"");
+        const char *m3 = strstr(p, "class="result__a"");
+        const char *m4 = strstr(p, "class='result__a'");
+        
+        const char *match = NULL;
+        if (m1) match = m1;
+        if (m2 && (!match || m2 < match)) match = m2;
+        if (m3 && (!match || m3 < match)) match = m3;
+        if (m4 && (!match || m4 < match)) match = m4;
 
+        if (!match) break;
 
-    while ((p = strstr(p, "class=\"result__a\"")) != NULL && count < 12 && di + 256 < max_len) {
-
-        /* Retroceder o avanzar para buscar el href="..." dentro del mismo tag <a> */
-
-        const char *tag_start = p;
-
+        /* Retroceder para buscar el href="..." dentro del mismo tag <a> */
+        const char *tag_start = match;
         while (tag_start > raw_html && *tag_start != '<') tag_start--;
 
-        const char *href = strstr(tag_start, "href=\"");
+        const char *href = strstr(tag_start, "href="");
+        char q = '"';
+        if (!href || href > match + 40) {
+            href = strstr(tag_start, "href='");
+            q = ''';
+        }
 
-        const char *tag_close = strchr(p, '>');
-
-        const char *a_end = strstr(p, "</a>");
-
-
+        const char *tag_close = strchr(match, '>');
+        const char *a_end = tag_close ? strstr(tag_close, "</a>") : NULL;
 
         if (href && tag_close && a_end && href < tag_close) {
-
             href += 6;
-
-            const char *href_end = strchr(href, '"');
-
-            if (href_end) {
-
+            const char *href_end = strchr(href, q);
+            if (href_end && href_end < tag_close) {
                 char link_url[256] = {0};
-
                 char title[128] = {0};
 
-
-
-                /* Si DuckDuckGo envuelve el link en //duckduckgo.com/l/?uddg=https%3A%2F%2F... */
-
                 const char *uddg = strstr(href, "uddg=");
-
                 if (uddg && uddg < href_end) {
-
                     uddg += 5;
-
                     size_t ui = 0;
-
                     for (const char *c = uddg; c < href_end && *c != '&' && ui + 1 < sizeof(link_url); c++) {
-
                         if (*c == '%' && c + 2 < href_end) {
-
                             unsigned int hex = 0;
-
                             sscanf(c + 1, "%02x", &hex);
-
                             link_url[ui++] = (char)hex;
-
                             c += 2;
-
                         } else {
-
                             link_url[ui++] = *c;
-
                         }
-
                     }
-
                     link_url[ui] = '\0';
-
                 } else {
-
                     size_t ulen = (size_t)(href_end - href);
-
                     if (ulen >= sizeof(link_url)) ulen = sizeof(link_url) - 1;
-
                     memcpy(link_url, href, ulen);
-
+                    link_url[ulen] = '\0';
                 }
-
-
 
                 extract_clean_cell_text(tag_close + 1, a_end, title, sizeof(title));
 
-
-
-                if (strlen(title) > 2 && strncmp(link_url, "http", 4) == 0) {
-
+                if (strlen(title) > 2 && strncmp(link_url, "http", 4) == 0 && strstr(link_url, "duckduckgo.com/y.js") == NULL) {
                     count++;
-
                     di += snprintf(out_markdown + di, max_len - di,
-
                                    "## %d. [%s](%s)\n", count, title, link_url);
 
-
-
-                    /* Extraer descripción breve (result__snippet) debajo del enlace */
-
-                    const char *snip = strstr(a_end, "result__snippet");
-
-                    if (snip && (snip - a_end) < 800) {
-
+                    /* Snippet */
+                    const char *snip = strstr(a_end, "result-snippet");
+                    if (!snip) snip = strstr(a_end, "result__snippet");
+                    if (snip && (snip - a_end) < 600) {
                         const char *s_open = strchr(snip, '>');
-
-                        const char *s_close = s_open ? strstr(s_open, "</a") : NULL;
-
-                        if (!s_close && s_open) s_close = strstr(s_open, "</div");
-
+                        const char *s_close = s_open ? strstr(s_open, "</td>") : NULL;
+                        if (!s_close && s_open) s_close = strstr(s_open, "</div>");
                         if (s_open && s_close) {
-
                             char desc[220];
-
                             extract_clean_cell_text(s_open + 1, s_close, desc, sizeof(desc));
-
                             di += snprintf(out_markdown + di, max_len - di, " - %s\n\n", desc);
-
                         }
-
+                    } else {
+                        di += snprintf(out_markdown + di, max_len - di, "\n");
                     }
-
                 }
-
             }
-
         }
-
-        p = a_end ? (a_end + 4) : (p + 17);
-
+        p = a_end ? (a_end + 4) : (match + 20);
     }
 
+    return (count > 0);
+}
 
+/*
+ * Extrae resultados de busqueda directa de Wikipedia (ej. https://es.wikipedia.org/w/index.php?search=...)
+ */
+static inline int eonsurf_parse_wikipedia_search_results(const char *raw_html, char *out_markdown, size_t max_len) {
+    if (!strstr(raw_html, "mw-search-result-heading")) return 0;
+
+    size_t di = 0;
+    di += snprintf(out_markdown, max_len, "# Resultados de Busqueda en Wikipedia\n\n");
+
+    const char *p = raw_html;
+    int count = 0;
+
+    while ((p = strstr(p, "class="mw-search-result-heading"")) != NULL && count < 15 && di + 300 < max_len) {
+        const char *a_start = strstr(p, "<a href="");
+        if (a_start && (a_start - p) < 60) {
+            a_start += 9;
+            const char *a_href_end = strchr(a_start, '"');
+            const char *tag_close = a_href_end ? strchr(a_href_end, '>') : NULL;
+            const char *a_end = tag_close ? strstr(tag_close, "</a>") : NULL;
+
+            if (a_href_end && tag_close && a_end) {
+                char link_url[256] = "";
+                char title[128] = "";
+
+                size_t ulen = (size_t)(a_href_end - a_start);
+                if (a_start[0] == '/') {
+                    snprintf(link_url, sizeof(link_url), "https://es.wikipedia.org%.*s", (int)ulen, a_start);
+                } else {
+                    snprintf(link_url, sizeof(link_url), "%.*s", (int)ulen, a_start);
+                }
+
+                extract_clean_cell_text(tag_close + 1, a_end, title, sizeof(title));
+
+                if (strlen(title) > 0) {
+                    count++;
+                    di += snprintf(out_markdown + di, max_len - di,
+                                   "## %d. [%s](%s)\n", count, title, link_url);
+
+                    /* Buscar fragmento mw-search-result-data o snippet */
+                    const char *snippet = strstr(a_end, "searchresult");
+                    if (snippet && (snippet - a_end) < 400) {
+                        const char *s_open = strchr(snippet, '>');
+                        const char *s_close = s_open ? strstr(s_open, "</div>") : NULL;
+                        if (s_open && s_close) {
+                            char desc[220];
+                            extract_clean_cell_text(s_open + 1, s_close, desc, sizeof(desc));
+                            di += snprintf(out_markdown + di, max_len - di, " - %s\n\n", desc);
+                        }
+                    } else {
+                        di += snprintf(out_markdown + di, max_len - di, "\n");
+                    }
+                }
+            }
+        }
+        p += 32;
+    }
 
     return (count > 0);
-
 }
+
 
 #endif /* EONSURF_DYNAMIC_WEB_H */

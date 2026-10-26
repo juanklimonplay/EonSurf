@@ -511,7 +511,7 @@ static inline void eonsurf_render_complete_mockup_frame(uint32_t *fb, int pitch,
     extern int g_sidebar_visible;
     extern int g_dock_visible;
     /* La columna lateral flotante se muestra si el usuario la activo O si la pagina web tiene foto/infobox descargada */
-    int has_infobox = (g_sidebar_visible || g_layout.infobox_rgba_tex != NULL) && (g_layout.infobox_rgba_tex != NULL || strstr(current_url, "wikipedia") != NULL);
+    int has_infobox = g_sidebar_visible; /* Ventana lateral unificada: solo visible si el usuario la activa explícitamente */
     int content_max_x = has_infobox ? 865 : 1220;
     int content_max_y = g_dock_visible ? 655 : 695;
 

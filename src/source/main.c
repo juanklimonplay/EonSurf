@@ -586,11 +586,20 @@ static void navigate_to(const char *input_url)
             static char raw_extracted[16384];
             int parsed_ok = 0;
 
-            /* Si es una pagina de resultados de DuckDuckGo Lite, extraer snippets y titulos a Markdown */
+            /* 1. Si es una pagina de resultados de DuckDuckGo Lite, extraer snippets y titulos a Markdown */
             if (strstr(target_url, "duckduckgo.com")) {
                 static char search_md[16384];
                 if (eonsurf_parse_duckduckgo_results(chunk.data, search_md, sizeof(search_md))) {
                     eonsurf_format_markdown_and_links(search_md, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
+                    parsed_ok = 1;
+                }
+            }
+
+            /* 2. Si es una pagina de busqueda directa de Wikipedia */
+            if (!parsed_ok && strstr(target_url, "wikipedia.org") && strstr(target_url, "search=")) {
+                static char wiki_search_md[16384];
+                if (eonsurf_parse_wikipedia_search_results(chunk.data, wiki_search_md, sizeof(wiki_search_md))) {
+                    eonsurf_format_markdown_and_links(wiki_search_md, page_body, sizeof(page_body), g_links, &g_link_count, MAX_PAGE_LINKS);
                     parsed_ok = 1;
                 }
             }

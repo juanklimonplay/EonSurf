@@ -123,25 +123,13 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
      * Si detectamos <table dentro de los primeros 30.000 bytes de mw-parser-output,
      * saltamos completamente la tabla de infobox hasta su cierre </table>.
      */
-    const char *check_table = strstr(body_ptr, "<table");
-    if (!check_table) check_table = strstr(body_ptr, "<TABLE");
-    if (check_table && (check_table - body_ptr) < 30000) {
-        int table_depth = 0;
-        const char *scan = check_table;
-        while (*scan && (scan - check_table) < 200000) {
-            if (strncasecmp(scan, "<table", 6) == 0) {
-                table_depth++;
-                scan += 6;
-            } else if (strncasecmp(scan, "</table>", 8) == 0) {
-                table_depth--;
-                scan += 8;
-                if (table_depth <= 0) {
-                    body_ptr = scan;
-                    break;
-                }
-            } else {
-                scan++;
-            }
+    /* En articulos de Wikipedia, la infobox inicial se descarta solo si es especificamente class="infobox" */
+    const char *check_infobox = strstr(body_ptr, "class="infobox"");
+    if (check_infobox && (check_infobox - body_ptr) < 15000) {
+        const char *scan = check_infobox;
+        const char *ib_end = strstr(scan, "</table>");
+        if (ib_end && (ib_end - scan) < 50000) {
+            body_ptr = ib_end + 8;
         }
     }
 
@@ -163,17 +151,14 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
                 if (!close_tag) close_tag = strstr(p, "</STYLE>");
                 if (close_tag) { p = close_tag + 8; continue; } else break;
             }
-            if (strncasecmp(p, "<table", 6) == 0) {
-                table_nest++;
-                /* Avanzar hasta el cierre '>' de la apertura de table */
-                while (*p && *p != '>') p++;
-                if (*p == '>') p++;
-                continue;
-            }
-            if (strncasecmp(p, "</table>", 8) == 0) {
-                if (table_nest > 0) table_nest--;
-                p += 8;
-                continue;
+            if (strncasecmp(p, "<tr", 3) == 0 || strncasecmp(p, "</tr>", 5) == 0) {
+                if (out_idx > 0 && out_body[out_idx - 1] != '\n') {
+                    out_body[out_idx++] = '\n';
+                }
+            } else if (strncasecmp(p, "<td", 3) == 0 || strncasecmp(p, "<th", 3) == 0) {
+                if (out_idx > 0 && out_body[out_idx - 1] != ' ' && out_body[out_idx - 1] != '\n') {
+                    out_body[out_idx++] = ' ';
+                }
             }
             if (strncasecmp(p, "<nav", 4) == 0) {
                 const char *close_tag = strstr(p, "</nav>");
@@ -196,11 +181,7 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
                 if (close_tag) { p = close_tag + 9; continue; } else break;
             }
 
-            /* Si estamos dentro de una tabla cualquiera, no dumpear texto desordenado al cuerpo */
-            if (table_nest > 0) {
-                p++;
-                continue;
-            }
+            /* Las tablas web ahora se procesan fluidamente como filas y celdas */
 
             /* Detectar saltos de párrafo y encabezados */
             if (strncasecmp(p, "</p>", 4) == 0 || strncasecmp(p, "<br", 3) == 0) {
@@ -327,11 +308,7 @@ static inline int eonsurf_extract_clean_article(const char *html_data, size_t ht
             continue;
         }
 
-        /* Si estamos dentro de una tabla secundaria, ignorar texto plano */
-        if (table_nest > 0) {
-            p++;
-            continue;
-        }
+
 
         /* Texto visible */
         char dec_c = 0;
