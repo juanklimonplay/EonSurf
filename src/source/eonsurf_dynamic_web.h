@@ -342,8 +342,8 @@ static inline int eonsurf_parse_duckduckgo_results(const char *raw_html, char *o
     while (*p && count < 15 && di + 300 < max_len) {
         /* Buscar tanto clase 'result-link' de DuckDuckGo Lite como 'result__a' de version HTML */
         const char *m1 = strstr(p, "class='result-link'");
-        const char *m2 = strstr(p, "class="result-link"");
-        const char *m3 = strstr(p, "class="result__a"");
+        const char *m2 = strstr(p, "class=\"result-link\"");
+        const char *m3 = strstr(p, "class=\"result__a\"");
         const char *m4 = strstr(p, "class='result__a'");
         
         const char *match = NULL;
@@ -358,11 +358,11 @@ static inline int eonsurf_parse_duckduckgo_results(const char *raw_html, char *o
         const char *tag_start = match;
         while (tag_start > raw_html && *tag_start != '<') tag_start--;
 
-        const char *href = strstr(tag_start, "href="");
+        const char *href = strstr(tag_start, "href=\"");
         char q = '"';
         if (!href || href > match + 40) {
             href = strstr(tag_start, "href='");
-            q = ''';
+            q = '\'';
         }
 
         const char *tag_close = strchr(match, '>');
