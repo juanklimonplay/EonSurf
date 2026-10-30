@@ -91,8 +91,8 @@ if [ -n "${PKG_OUT:-}" ]; then
   [ -f pkg/eonsurf.cfg ] && cp pkg/eonsurf.cfg "$P/USRDIR/"
   cp pkg/ICON0.PNG "$P/ICON0.PNG"
   [ -f pkg/PIC1.PNG ] && cp pkg/PIC1.PNG "$P/PIC1.PNG"
-  sfo.py --title "EonSurf Web Browser" --appid "$TITLE_ID" -f src/pkg/sfo.xml "$P/PARAM.SFO"
-  pkg.py --contentid "$CONTENT_ID" "$P/" "$PKG_OUT" > /dev/null
+  sfo --title "EonSurf Web Browser" --appid "$TITLE_ID" -f src/pkg/sfo.xml "$P/PARAM.SFO"
+  pkg --contentid "$CONTENT_ID" "$P/" "$PKG_OUT" > /dev/null
   rm -rf "$P"
   ls -lh "$PKG_OUT"
 fi
