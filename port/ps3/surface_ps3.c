@@ -14,6 +14,7 @@
 #include <sysutil/sysutil.h>
 #include <sysutil/video.h>
 #include <io/pad.h>
+#include <net/net.h>
 #include <rsx/rsx.h>
 
 #include "libnsfb.h"
@@ -54,6 +55,13 @@ static float scroll_acc = 0;
 /* Cola corta: una lectura puede generar clic + movimiento + scroll */
 static nsfb_event_t evq[8];
 static int evq_head = 0, evq_len = 0;
+
+/* La red de la PS3 se inicializa antes de main: NetSurf arranca curl dentro de
+ * netsurf_init(), mucho antes de crear la superficie. */
+__attribute__((constructor)) static void ps3_net_init(void)
+{
+    netInitialize();
+}
 
 static void on_sysutil(u64 status, u64 param, void *ud)
 {

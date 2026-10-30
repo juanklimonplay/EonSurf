@@ -8,7 +8,7 @@ index 05cb03e..03df213 100644
  # freemint does not support pkg-config for libcurl
 -ifeq ($(HOST),mint)
 +ifeq ($(HOST),powerpc64-ps3-elf)
-+    CFLAGS += -I$(PS3DEV)/portlibs/ppu/include
++    CFLAGS += -I$(PS3DEV)/portlibs/ppu/include -DWITH_CURL
 +    LDFLAGS += -L$(PS3DEV)/portlibs/ppu/lib -lcurl
 +else ifeq ($(HOST),mint)
      CFLAGS += $(shell curl-config --cflags)
