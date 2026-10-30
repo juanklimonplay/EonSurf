@@ -3,8 +3,13 @@
 EonSurf es la versión **nativa**: todo corre en la PS3, sin servidores.
 
 ## Ahora (versión nativa)
-1. **JavaScript propio**: Duktape (incluido en NetSurf) activado. Medir qué páginas andan y
-   ampliar lo que falte (DOM, eventos, `fetch`/`XMLHttpRequest`). Evaluar QuickJS si Duktape se queda corto.
+1. **JavaScript propio**
+   - Etapa 1 (hecha, 30-10-2026): Duktape activado, redibujo en vivo, `fetch`, `XMLHttpRequest`,
+     `Promise`, `localStorage` en disco, `querySelector`/`matches`/`closest` (port/ps3/patch-js.py,
+     port/ps3/js/). Prueba: startpage/js-test.html.
+   - Pendiente de la etapa 1: código HTTP real (hoy 200 o error), cabeceras propias, POST con JSON,
+     guardado diferido de localStorage, redibujo parcial en vez de rehacer toda la página.
+   - Etapa 2: QuickJS (JavaScript moderno, ES2023) con un generador de bindings propio.
 2. **Pestañas** (L1/R1) y **menú START** (marcadores, historial, opciones).
 3. **Pantalla completa** (□) y **modo lector** (SELECT).
 4. **Descargas**: `.pkg` a `/dev_hdd0/packages/`, el resto a `/dev_hdd0/downloads/`.
