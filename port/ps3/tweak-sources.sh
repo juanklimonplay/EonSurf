@@ -169,3 +169,6 @@ PY
 # JavaScript: Duktape ya se compila, pero NetSurf lo trae apagado por defecto
 sed -i 's/^NSOPTION_BOOL(enable_javascript, false)/NSOPTION_BOOL(enable_javascript, true)/' netsurf/desktop/options.h
 grep -n "enable_javascript" netsurf/desktop/options.h
+
+# Mejoras de JavaScript (redibujo en vivo y APIs que faltan)
+python3 ../../ps3/patch-js.py

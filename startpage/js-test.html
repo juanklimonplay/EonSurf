@@ -14,6 +14,7 @@ li { font-size: 20px; margin: 6px 0; }
 <body>
 <h1>Prueba de JavaScript</h1>
 <p id="estado">JavaScript NO se ejecutó.</p>
+<p id="reloj" style="font-size:28px;color:#00c8ff">Contador: esperando...</p>
 <ul id="lista"></ul>
 <script>
 var lista = document.getElementById('lista');
@@ -39,6 +40,11 @@ prueba('XMLHttpRequest', function () { return typeof XMLHttpRequest !== 'undefin
 prueba('fetch', function () { return typeof fetch === 'function'; });
 prueba('Promise', function () { return typeof Promise === 'function'; });
 prueba('flechas / let (ES6)', function () { return eval('(() => { let a = 2; return a * 2; })()') === 4; });
+var n = 0;
+setInterval(function () {
+	n++;
+	document.getElementById('reloj').textContent = 'Contador en vivo: ' + n;
+}, 1000);
 </script>
 </body>
 </html>
