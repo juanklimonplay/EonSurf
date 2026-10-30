@@ -52,6 +52,14 @@ else
   cmp -s port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c" || cp port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c"
 fi
 
+# EONSURF_VERBOSE=1: log detallado de NetSurf por stderr (TTY de la PS3 / RPCS3), como si se pasara -v
+GUI="$NS/netsurf/frontends/framebuffer/gui.c"
+if [ "${EONSURF_VERBOSE:-0}" = 1 ] && ! grep -q EONSURF_VERBOSE "$GUI"; then
+  sed -i 's/^\([ \t]*\)nslog_init(nslog_stream_configure, &argc, argv);/\1{ \/* EONSURF_VERBOSE *\/ static char *vargv[] = { "nsfb", "-v", NULL }; int vargc = 2; nslog_init(nslog_stream_configure, \&vargc, vargv); }/' "$GUI"
+elif [ "${EONSURF_VERBOSE:-0}" != 1 ] && grep -q EONSURF_VERBOSE "$GUI"; then
+  sed -i 's/^\([ \t]*\){ \/\* EONSURF_VERBOSE .*$/\1nslog_init(nslog_stream_configure, \&argc, argv);/' "$GUI"
+fi
+
 # make de netsurf-all no reinstala libnsfb si ya hay build-stamp; se fuerza cuando cambia el driver
 if [ "$NS/libnsfb/src/surface/ps3.c" -nt "$NS/inst-framebuffer/build-stamp" ] 2>/dev/null; then
   rm -f "$NS/inst-framebuffer/build-stamp" "$NS/netsurf/nsfb"
