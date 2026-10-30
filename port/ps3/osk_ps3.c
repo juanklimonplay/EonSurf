@@ -17,6 +17,10 @@
 #define OSKDIALOG_INPUT_ENTERED    0x505
 #define OSKDIALOG_INPUT_CANCELED   0x506
 
+/* Se llama en cada vuelta mientras el teclado esta abierto (p.ej. para seguir
+ * mostrando la pantalla del navegador debajo). */
+void (*eonsurf_osk_idle)(void) = NULL;
+
 static volatile int s_osk_event = 0;
 static volatile bool s_osk_unloaded = false;
 static sys_mem_container_t s_container_mem;
@@ -95,7 +99,7 @@ int eonsurf_abrir_teclado(const char *titulo, const char *texto_inicial, char *r
     s_dialog_param.prohibitFlags = 0;
     oskSetInitialInputDevice(OSK_DEVICE_PAD);
 
-    sysUtilRegisterCallback(SYSUTIL_EVENT_SLOT0, osk_callback, NULL);
+    sysUtilRegisterCallback(SYSUTIL_EVENT_SLOT1, osk_callback, NULL);
 
     s_osk_event = 0;
     s_osk_unloaded = false;
@@ -108,6 +112,7 @@ int eonsurf_abrir_teclado(const char *titulo, const char *texto_inicial, char *r
 
     while (!s_osk_unloaded) {
         sysUtilCheckCallback();
+        if (eonsurf_osk_idle) eonsurf_osk_idle();
         usleep(10000);
 
         if (s_osk_event == OSKDIALOG_INPUT_ENTERED) {
@@ -129,7 +134,7 @@ int eonsurf_abrir_teclado(const char *titulo, const char *texto_inicial, char *r
         utf16_to_utf8(out16, (uint8_t*)resultado, max_len);
     }
 
-    sysUtilUnregisterCallback(SYSUTIL_EVENT_SLOT0);
+    sysUtilUnregisterCallback(SYSUTIL_EVENT_SLOT1);
     sysMemContainerDestroy(s_container_mem);
     return (s_output_param.res == OSK_OK && action_res == 1) ? 0 : -1;
 }

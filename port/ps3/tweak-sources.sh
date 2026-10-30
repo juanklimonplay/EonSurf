@@ -5,7 +5,9 @@ set -e
 
 # Superficie PS3 (RSX): compilarla, darle su propio tipo y usarla por defecto
 cp ../../ps3/surface_ps3.c libnsfb/src/surface/ps3.c
-sed -i 's/^SURFACE_HANDLER_yes := surface.c ram.c$/SURFACE_HANDLER_yes := surface.c ram.c ps3.c/' libnsfb/src/surface/Makefile
+cp ../../ps3/osk_ps3.c libnsfb/src/surface/ps3_osk.c
+cp ../../ps3/osk_ps3.h libnsfb/src/surface/osk_ps3.h
+sed -i 's/^SURFACE_HANDLER_yes := surface.c ram.c$/SURFACE_HANDLER_yes := surface.c ram.c ps3.c ps3_osk.c/' libnsfb/src/surface/Makefile
 sed -i '1i CFLAGS += -I$(PS3DEV)/ppu/include -I$(PS3DEV)/portlibs/ppu/include' libnsfb/src/surface/Makefile
 sed -i 's/^\( *\)NSFB_SURFACE_COUNT,/\1NSFB_SURFACE_PS3, \/**< PS3 RSX surface *\/\n\1NSFB_SURFACE_COUNT,/' libnsfb/include/libnsfb.h
 sed -i 's/^\(\t*\)nsfb_enumerate_surface_types(framebuffer_pick_default_fename, NULL);/&\n\1fename = "ps3";/' netsurf/frontends/framebuffer/gui.c

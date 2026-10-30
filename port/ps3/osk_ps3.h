@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+extern void (*eonsurf_osk_idle)(void);
+
 int eonsurf_abrir_teclado(const char *titulo, const char *texto_inicial, char *resultado, size_t max_len);
 
 #ifdef __cplusplus

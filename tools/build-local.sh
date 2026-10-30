@@ -48,6 +48,8 @@ if [ "${1:-}" = "--fresh" ] || [ ! -d "$NS" ]; then
   (cd "$NS" && TITLE_ID=$TITLE_ID bash ../../ps3/tweak-sources.sh > /dev/null)
 else
   cmp -s port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c" || cp port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c"
+  cmp -s port/ps3/osk_ps3.c "$NS/libnsfb/src/surface/ps3_osk.c" || cp port/ps3/osk_ps3.c "$NS/libnsfb/src/surface/ps3_osk.c"
+  cmp -s port/ps3/osk_ps3.h "$NS/libnsfb/src/surface/osk_ps3.h" || cp port/ps3/osk_ps3.h "$NS/libnsfb/src/surface/osk_ps3.h"
 fi
 
 # EONSURF_VERBOSE=1: log detallado de NetSurf por stderr (TTY de la PS3 / RPCS3), como si se pasara -v

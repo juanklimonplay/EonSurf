@@ -26,6 +26,7 @@
 #include "surface.h"
 #include "plot.h"
 #include "cursor.h"
+#include "osk_ps3.h"
 
 #define CB_SIZE   0x100000
 #define HOST_SIZE (32 * 1024 * 1024)
@@ -38,6 +39,14 @@ static int dirty = 0;
 static padData last_pad;
 static int have_pad = 0;
 static int cross_down = 0;
+static int triangle_down = 0;
+static int circle_down = 0;
+static int start_down = 0;
+
+/* Posiciones de la barra de herramientas de NetSurf (layout "blfsrutc", 1280 px) */
+#define TOOLBAR_Y    15
+#define BACK_BTN_X   13
+#define URL_BAR_X    680
 static int virtual_mouse_x = 640;
 static int virtual_mouse_y = 360;
 
@@ -52,8 +61,9 @@ static unsigned long long next_poll_ms = 0;
 static float cursor_frac_x = 0, cursor_frac_y = 0;
 static float scroll_acc = 0;
 
-/* Cola corta: una lectura puede generar clic + movimiento + scroll */
-static nsfb_event_t evq[8];
+/* Cola de eventos: una lectura puede generar clic + movimiento + scroll, y el
+ * teclado en pantalla genera varias teclas por cada caracter escrito. */
+static nsfb_event_t evq[2048];
 static int evq_head = 0, evq_len = 0;
 
 /* La red de la PS3 se inicializa antes de main: NetSurf arranca curl dentro de
@@ -231,6 +241,106 @@ static void evq_push(enum nsfb_event_type_e type, int code, int x, int y)
     evq_len++;
 }
 
+static void evq_key(int code)
+{
+    evq_push(NSFB_EVENT_KEY_DOWN, code, 0, 0);
+    evq_push(NSFB_EVENT_KEY_UP, code, 0, 0);
+}
+
+/* Clic en un punto de la pantalla y vuelta del cursor a donde estaba */
+static void evq_click_at(int x, int y)
+{
+    evq_push(NSFB_EVENT_MOVE_ABSOLUTE, 0, x, y);
+    evq_key(NSFB_KEY_MOUSE_1);
+    evq_push(NSFB_EVENT_MOVE_ABSOLUTE, 0, virtual_mouse_x, virtual_mouse_y);
+}
+
+/* Teclado de EE.UU. como el de NetSurf: simbolos que van con Shift y su tecla base */
+static const char shifted_chars[] = "~!@#$%^&*()_+{}|:\"<>?";
+static const char shifted_base[]  = "`1234567890-=[]\;',./";
+
+/* Escribe texto ASCII como pulsaciones de teclado */
+static void evq_type(const char *text)
+{
+    for (; *text; text++) {
+        unsigned char c = (unsigned char)*text;
+        const char *sh = (c != 0) ? strchr(shifted_chars, c) : NULL;
+
+        if (c >= 'A' && c <= 'Z') {
+            evq_push(NSFB_EVENT_KEY_DOWN, NSFB_KEY_LSHIFT, 0, 0);
+            evq_key(c - 'A' + 'a');
+            evq_push(NSFB_EVENT_KEY_UP, NSFB_KEY_LSHIFT, 0, 0);
+        } else if (sh != NULL) {
+            evq_push(NSFB_EVENT_KEY_DOWN, NSFB_KEY_LSHIFT, 0, 0);
+            evq_key(shifted_base[sh - shifted_chars]);
+            evq_push(NSFB_EVENT_KEY_UP, NSFB_KEY_LSHIFT, 0, 0);
+        } else if (c >= 32 && c < 127) {
+            evq_key(c);
+        }
+    }
+}
+
+/* Mientras el teclado de Sony esta abierto se sigue mostrando la pantalla */
+static void osk_idle(void)
+{
+    dirty = 1;
+    ps3_present();
+}
+
+/* Texto de busqueda -> URL de DuckDuckGo liviano; lo demas se usa tal cual */
+static void url_or_search(const char *in, char *out, size_t max)
+{
+    if (strstr(in, "://") != NULL || (strchr(in, '.') != NULL && strchr(in, ' ') == NULL)) {
+        snprintf(out, max, "%s", in);
+        return;
+    }
+    size_t n = (size_t)snprintf(out, max, "https://lite.duckduckgo.com/lite/?q=");
+    for (; *in && n + 4 < max; in++) {
+        unsigned char c = (unsigned char)*in;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+            c == '-' || c == '_' || c == '.' || c == '~') {
+            out[n++] = c;
+        } else if (c == ' ') {
+            out[n++] = '+';
+        } else {
+            n += snprintf(out + n, max - n, "%%%02X", c);
+        }
+    }
+    out[n] = 0;
+}
+
+/* Triangulo: escribir una direccion o una busqueda en la barra de URL */
+static void ask_url(void)
+{
+    char text[256] = {0};
+    char url[1024];
+
+    eonsurf_osk_idle = osk_idle;
+    if (eonsurf_abrir_teclado("EonSurf: escribi una direccion o una busqueda", "", text, sizeof(text)) != 0 ||
+        text[0] == 0)
+        return;
+    url_or_search(text, url, sizeof(url));
+
+    evq_click_at(URL_BAR_X, TOOLBAR_Y);
+    /* Ctrl+U borra la barra */
+    evq_push(NSFB_EVENT_KEY_DOWN, NSFB_KEY_LCTRL, 0, 0);
+    evq_key(NSFB_KEY_u);
+    evq_push(NSFB_EVENT_KEY_UP, NSFB_KEY_LCTRL, 0, 0);
+    evq_type(url);
+    evq_key(NSFB_KEY_RETURN);
+}
+
+/* Start: escribir en el campo de texto de la pagina que tenga el foco */
+static void ask_text(void)
+{
+    char text[256] = {0};
+
+    eonsurf_osk_idle = osk_idle;
+    if (eonsurf_abrir_teclado("EonSurf: texto para el campo seleccionado", "", text, sizeof(text)) != 0)
+        return;
+    evq_type(text);
+}
+
 /* Inclinacion del stick (0..255, centro 128) a -1..1 con zona muerta y curva
  * cuadratica: poco recorrido = movimiento fino, a fondo = rapido. */
 static float stick_curve(int raw)
@@ -269,6 +379,22 @@ static void ps3_poll_pad(nsfb_t *nsfb)
         cross_down = last_pad.BTN_CROSS;
         evq_push(cross_down ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP,
                  NSFB_KEY_MOUSE_1, 0, 0);
+    }
+
+    if (last_pad.BTN_CIRCLE != circle_down) {
+        circle_down = last_pad.BTN_CIRCLE;
+        if (circle_down)
+            evq_click_at(BACK_BTN_X, TOOLBAR_Y);
+    }
+    if (last_pad.BTN_TRIANGLE != triangle_down) {
+        triangle_down = last_pad.BTN_TRIANGLE;
+        if (triangle_down)
+            ask_url();
+    }
+    if (last_pad.BTN_START != start_down) {
+        start_down = last_pad.BTN_START;
+        if (start_down)
+            ask_text();
     }
 
     /* Stick izquierdo: cursor. Solo hay evento si se movio de verdad: fbtk_event
