@@ -1,0 +1,33 @@
+name: Exportar kit PS3 (para compilar en local)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Permisos para restaurar /usr/local/ps3dev
+        run: |
+          sudo mkdir -p /usr/local/ps3dev
+          sudo chown -R $USER:$USER /usr/local/ps3dev
+
+      - name: Restaurar el kit desde la cache de build.yml
+        id: kit
+        uses: actions/cache/restore@v4
+        with:
+          path: /usr/local/ps3dev
+          key: ps3dev-${{ hashFiles('docs/TOOLCHAIN.md', 'tools/build-kit.sh') }}
+          fail-on-cache-miss: true
+
+      - name: Empaquetar
+        run: tar -C /usr/local -I 'zstd -19 -T0' -cf ps3dev-ubuntu24.tar.zst ps3dev && ls -lh ps3dev-ubuntu24.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ps3dev-ubuntu24
+          path: ps3dev-ubuntu24.tar.zst
+          compression-level: 0
+          retention-days: 7
