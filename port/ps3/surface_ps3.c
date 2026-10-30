@@ -261,6 +261,21 @@ static void evq_click_at(int x, int y)
     evq_push(NSFB_EVENT_MOVE_ABSOLUTE, 0, virtual_mouse_x, virtual_mouse_y);
 }
 
+/* Una pantalla para arriba o para abajo: ruedas del mouse en el centro de la
+ * pagina. Las teclas Re Pag/Av Pag no sirven si el foco quedo en la barra de
+ * direcciones, que las ignora. */
+#define PAGE_WHEEL_STEPS 6      /* 100 px cada una en NetSurf */
+
+static void evq_page(int down)
+{
+    int code = down ? NSFB_KEY_MOUSE_5 : NSFB_KEY_MOUSE_4;
+
+    evq_push(NSFB_EVENT_MOVE_ABSOLUTE, 0, 640, 360);
+    for (int i = 0; i < PAGE_WHEEL_STEPS; i++)
+        evq_key(code);
+    evq_push(NSFB_EVENT_MOVE_ABSOLUTE, 0, virtual_mouse_x, virtual_mouse_y);
+}
+
 /* Teclado de EE.UU. como el de NetSurf: simbolos que van con Shift y su tecla base */
 static const char shifted_chars[] = "~!@#$%^&*()_+{}|:\"<>?";
 static const char shifted_base[]  = "`1234567890-=[]\\;',./";
@@ -423,12 +438,12 @@ static void ps3_poll_pad(nsfb_t *nsfb)
     if (last_pad.BTN_UP != up_down) {
         up_down = last_pad.BTN_UP;
         if (up_down)
-            evq_key(NSFB_KEY_PAGEUP);
+            evq_page(0);
     }
     if (last_pad.BTN_DOWN != down_down) {
         down_down = last_pad.BTN_DOWN;
         if (down_down)
-            evq_key(NSFB_KEY_PAGEDOWN);
+            evq_page(1);
     }
 
     /* Stick izquierdo: cursor. Solo hay evento si se movio de verdad: fbtk_event
