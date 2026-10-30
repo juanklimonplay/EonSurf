@@ -6,7 +6,8 @@
 <style>
 body { background: #0c0f17; color: #e8ecf2; font-family: sans-serif; padding: 24px 60px; }
 h1 { color: #00c8ff; }
-li { font-size: 20px; margin: 6px 0; }
+li { font-size: 16px; margin: 3px 0; }
+h1 { margin: 0; }
 .ok { color: #3ddc84; }
 .no { color: #ff5c5c; }
 </style>
@@ -24,7 +25,7 @@ function prueba(nombre, fn) {
 	try { ok = fn(); } catch (e) { extra = ' (' + e + ')'; }
 	li.className = ok ? 'ok' : 'no';
 	li.appendChild(document.createTextNode((ok ? 'OK  ' : 'FALLA  ') + nombre + extra));
-	lista.appendChild(li);
+	if (lista.firstChild) lista.insertBefore(li, lista.firstChild); else lista.appendChild(li);
 }
 document.getElementById('estado').textContent = 'JavaScript se ejecutó (motor de EonSurf).';
 prueba('getElementById / textContent', function () { return document.getElementById('estado') !== null; });
@@ -40,6 +41,23 @@ prueba('XMLHttpRequest', function () { return typeof XMLHttpRequest !== 'undefin
 prueba('fetch', function () { return typeof fetch === 'function'; });
 prueba('Promise', function () { return typeof Promise === 'function'; });
 prueba('flechas / let (ES6)', function () { return eval('(() => { let a = 2; return a * 2; })()') === 4; });
+prueba('matches / closest', function () { return lista.matches('ul#lista') && lista.closest('body') === document.body; });
+prueba('querySelectorAll', function () { return document.querySelectorAll('li.ok').length >= 3; });
+Promise.resolve(41).then(function (v) { prueba('Promise.then (llegó)', function () { return v + 1 === 42; }); });
+fetch('https://example.com/').then(function (r) { return r.text(); }).then(function (t) {
+	prueba('fetch https (llegó ' + t.length + ' bytes)', function () { return t.indexOf('Example Domain') >= 0; });
+}, function (e) { prueba('fetch https', function () { throw e; }); });
+var x = new XMLHttpRequest();
+x.open('GET', 'https://example.com/');
+x.onload = function () { prueba('XMLHttpRequest (llegó ' + x.status + ')', function () { return x.responseText.length > 100; }); };
+x.onerror = function () { prueba('XMLHttpRequest (error)', function () { return false; }); };
+x.send();
+prueba('localStorage persistente', function () {
+	var visitas = parseInt(localStorage.getItem('visitas') || '0', 10) + 1;
+	localStorage.setItem('visitas', String(visitas));
+	document.getElementById('estado').textContent += ' Visitas a esta página: ' + visitas + '.';
+	return true;
+});
 var n = 0;
 setInterval(function () {
 	n++;

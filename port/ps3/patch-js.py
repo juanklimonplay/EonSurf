@@ -230,4 +230,45 @@ patch(NS + 'content/handlers/css/select.c', '\tassert(old_node_data == NULL);\n'
       '\t\t\t\told_node_data, n, NULL);\n'
       '\t}\n')
 
-print('JS EonSurf: redibujo en vivo aplicado')
+# ---------------------------------------------------------------- APIs nativas + polyfill
+DUK = NS + 'content/handlers/javascript/duktape/'
+here = os.path.dirname(os.path.abspath(__file__))
+
+# el polyfill de EonSurf va al final del de NetSurf
+with open(DUK + 'polyfill.js', 'a') as out:
+    out.write('\n' + open(os.path.join(here, 'js', 'eonsurf-polyfill.js')).read())
+
+# las funciones nativas van en dukky.c, despues de dukky_leave_thread
+s = open(DUK + 'dukky.c').read()
+natives = open(os.path.join(here, 'js', 'dukky_eonsurf.c')).read()
+anchor = 'duk_bool_t dukky_check_timeout(void *udata)'
+assert anchor in s
+s = s.replace(anchor, natives + '\n' + anchor, 1)
+# prototipos arriba, porque js_newthread y dukky_destroythread estan antes
+anchor = '#define EVENT_MAGIC MAGIC(EVENT_MAP)'
+assert anchor in s
+s = s.replace(anchor, 'struct jsthread;\nstatic void eon_register_natives(duk_context *ctx, struct jsthread *thread);\n'
+              'static void eon_abort_thread(struct jsthread *thread);\n\n' + anchor, 1)
+anchor = '\t/* Now load the polyfills */\n'
+assert anchor in s
+s = s.replace(anchor, '\t/* EonSurf: funciones nativas para el polyfill */\n\teon_register_natives(CTX, ret);\n\n' + anchor, 1)
+anchor = '\t/* Closing down the extant thread */\n'
+assert anchor in s
+s = s.replace(anchor, '\t/* EonSurf: cancelar pedidos de red pendientes */\n\teon_abort_thread(thread);\n\n' + anchor, 1)
+# instalar querySelector y compania en cuanto exista el documento
+anchor = '\tdukky_reset_start_time(CTX);\n\tif (name != NULL) {\n'
+assert anchor in s
+s = s.replace(anchor, '\tduk_peval_string_noresult(CTX, "if (this.__eonInstallDom) this.__eonInstallDom();");\n' + anchor, 1)
+open(DUK + 'dukky.c', 'w').write(s)
+
+# los metodos DOM deben poder reemplazarse (WebIDL: writable y configurable);
+# nsgenbind los generaba fijos y el polyfill no podia mejorar querySelector
+p = 'nsgenbind/src/duk-libdom-interface.c'
+s = open(p).read()
+i = s.index('/* Add a method */')
+old = 'DUK_DEFPROP_HAVE_CONFIGURABLE);'
+j = s.index(old, i)
+s = s[:j] + 'DUK_DEFPROP_HAVE_CONFIGURABLE |\\n");\n        outputf(outc,\n                "\\t\\t     DUK_DEFPROP_WRITABLE | DUK_DEFPROP_CONFIGURABLE);' + s[j + len(old):]
+open(p, 'w').write(s)
+
+print('JS EonSurf: redibujo en vivo y APIs aplicados')
