@@ -93,6 +93,22 @@ static int ps3_surface_initialise(nsfb_t *nsfb)
     return 0;
 }
 
+/* libnsfb no provee geometry por defecto: llamarla con NULL salta a 0.
+ * La resolucion real la fija videoGetState() en initialise; aca solo
+ * aceptamos el formato pedido antes de iniciar. */
+static int ps3_surface_geometry(nsfb_t *nsfb, int width, int height,
+                                enum nsfb_format_e format)
+{
+    if (ctx == NULL) {
+        if (width > 0) nsfb->width = width;
+        if (height > 0) nsfb->height = height;
+        nsfb->linelen = nsfb->width * sizeof(u32);
+    }
+    if (format != NSFB_FMT_ANY) nsfb->format = NSFB_FMT_XRGB8888;
+    select_plotters(nsfb);
+    return 0;
+}
+
 static int ps3_surface_finalise(nsfb_t *nsfb)
 {
     (void)nsfb;
@@ -176,7 +192,7 @@ static nsfb_surface_rtns_t ps3_rt_surface = {
     .defaults = ps3_surface_defaults,
     .initialise = ps3_surface_initialise,
     .finalise = ps3_surface_finalise,
-    .geometry = NULL,
+    .geometry = ps3_surface_geometry,
     .parameters = NULL,
     .input = ps3_surface_input,
     .claim = NULL,
