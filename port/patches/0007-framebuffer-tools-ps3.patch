@@ -11,7 +11,7 @@ index 80623b1..e7eb925 100644
 +  CXX := powerpc64-ps3-elf-g++
 +  AR := powerpc64-ps3-elf-ar
 +  override NETSURF_USE_OPENSSL := NO
-+  override NETSURF_USE_PNG := NO
++  override PKG_CONFIG := PKG_CONFIG_LIBDIR="$(PS3DEV)/portlibs/ppu/lib/pkgconfig" pkg-config
 +  CFLAGS += -std=gnu99 -DNO_IPV6 -DPATH_MAX=1024 -UHAVE_UTSNAME -UHAVE_SIGPIPE -I$(PS3DEV)/portlibs/ppu/include -I$(PS3DEV)/include -I$(PS3DEV)/ppu/include
 +  LDFLAGS += -L$(PS3DEV)/portlibs/ppu/lib -L$(PS3DEV)/lib -L$(PS3DEV)/ppu/lib -lrsx -lgcm_sys -lio -lnet -lsysutil -lsysmodule -lmbedtls -lmbedx509 -lmbedcrypto -liconv -lz -lm -lrt -llv2
 +endif
