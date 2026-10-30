@@ -3,6 +3,8 @@
 # Uso:  bash tools/build-local.sh          -> recompila solo lo que cambio
 #       bash tools/build-local.sh --fresh  -> vuelve a bajar y parchar netsurf-all-3.11
 # Si RPCS3_USRDIR esta definido, copia ahi el EBOOT.BIN y los recursos res/.
+# Si PKG_OUT esta definido, arma ademas el .pkg instalable en esa ruta.
+# EONSURF_VERBOSE=1 prende el log detallado de NetSurf por la TTY.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$PWD
@@ -77,4 +79,20 @@ if [ -n "${RPCS3_USRDIR:-}" ]; then
   cp build-eonsurf/EBOOT.BIN "$RPCS3_USRDIR/EBOOT.BIN"
   mkdir -p "$RPCS3_USRDIR/res" && cp -rL "$NS/netsurf/frontends/framebuffer/res/." "$RPCS3_USRDIR/res/"
   echo "[OK] EBOOT y res copiados a $RPCS3_USRDIR"
+fi
+
+# PKG_OUT=<archivo.pkg>: arma el instalable igual que el CI (para probar en la PS3 por pendrive)
+if [ -n "${PKG_OUT:-}" ]; then
+  P=$(mktemp -d)
+  mkdir -p "$P/USRDIR"
+  cp build-eonsurf/EBOOT.BIN "$P/USRDIR/EBOOT.BIN"
+  cp -rL "$NS/netsurf/frontends/framebuffer/res" "$P/USRDIR/res"
+  [ -d startpage ] && cp -r startpage "$P/USRDIR/"
+  [ -f pkg/eonsurf.cfg ] && cp pkg/eonsurf.cfg "$P/USRDIR/"
+  cp pkg/ICON0.PNG "$P/ICON0.PNG"
+  [ -f pkg/PIC1.PNG ] && cp pkg/PIC1.PNG "$P/PIC1.PNG"
+  sfo.py --title "EonSurf Web Browser" --appid "$TITLE_ID" -f src/pkg/sfo.xml "$P/PARAM.SFO"
+  pkg.py --contentid "$CONTENT_ID" "$P/" "$PKG_OUT" > /dev/null
+  rm -rf "$P"
+  ls -lh "$PKG_OUT"
 fi
