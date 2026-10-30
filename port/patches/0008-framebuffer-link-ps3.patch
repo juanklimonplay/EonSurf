@@ -7,7 +7,7 @@ index 7408f0c..a70447a 100644
  LDFLAGS += -Wl,--no-whole-archive
  
 +ifeq ($(HOST),powerpc64-ps3-elf)
-+  LDFLAGS += -Wl,--start-group -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lsysutil -lsysmodule -liconv -lz -lm -lrt -llv2 -Wl,--end-group
++  LDFLAGS += -Wl,--start-group -lrsx -lgcm_sys -lio -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lsysutil -lsysmodule -liconv -lz -lm -lrt -llv2 -Wl,--end-group
 +endif
 +
  # ---------------------------------------------------------------------------
