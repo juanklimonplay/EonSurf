@@ -31,6 +31,9 @@ static u32 *fb[2] = {NULL, NULL};
 static u32 fb_off[2];
 static int pad_initialized = 0;
 static int dirty = 0;
+static padData last_pad;
+static int have_pad = 0;
+static int cross_down = 0;
 static int virtual_mouse_x = 640;
 static int virtual_mouse_y = 360;
 
@@ -166,31 +169,48 @@ static bool ps3_surface_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
     ioPadGetInfo(&pinfo);
 
     if (pinfo.status[0]) {
+        /* ioPadGetData solo trae datos cuando el mando cambio (len > 0);
+         * si no, seguimos con el ultimo estado conocido. */
         ioPadGetData(0, &pdata);
+        if (pdata.len > 0) {
+            last_pad = pdata;
+            have_pad = 1;
+        }
+        if (!have_pad)
+            return false;
 
-        int ax = pdata.ANA_L_H - 128;
-        int ay = pdata.ANA_L_V - 128;
-
-        if (abs(ax) > 15 || abs(ay) > 15) {
-            virtual_mouse_x += ax / 8;
-            virtual_mouse_y += ay / 8;
-
-            if (virtual_mouse_x < 0) virtual_mouse_x = 0;
-            if (virtual_mouse_x >= nsfb->width) virtual_mouse_x = nsfb->width - 1;
-            if (virtual_mouse_y < 0) virtual_mouse_y = 0;
-            if (virtual_mouse_y >= nsfb->height) virtual_mouse_y = nsfb->height - 1;
-
-            event->type = NSFB_EVENT_MOVE_ABSOLUTE;
-            event->value.vector.x = virtual_mouse_x;
-            event->value.vector.y = virtual_mouse_y;
-            event->value.vector.z = 0;
+        /* Cruz: un clic por pulsacion (DOWN al apretar, UP al soltar) */
+        if (last_pad.BTN_CROSS != cross_down) {
+            cross_down = last_pad.BTN_CROSS;
+            event->type = cross_down ? NSFB_EVENT_KEY_DOWN : NSFB_EVENT_KEY_UP;
+            event->value.keycode = NSFB_KEY_MOUSE_1;
             return true;
         }
 
-        if (pdata.BTN_CROSS) {
-            event->type = NSFB_EVENT_KEY_DOWN;
-            event->value.keycode = NSFB_KEY_MOUSE_1;
-            return true;
+        int ax = last_pad.ANA_L_H - 128;
+        int ay = last_pad.ANA_L_V - 128;
+
+        if (abs(ax) > 15 || abs(ay) > 15) {
+            int nx = virtual_mouse_x + ax / 8;
+            int ny = virtual_mouse_y + ay / 8;
+
+            if (nx < 0) nx = 0;
+            if (nx >= nsfb->width) nx = nsfb->width - 1;
+            if (ny < 0) ny = 0;
+            if (ny >= nsfb->height) ny = nsfb->height - 1;
+
+            /* Solo hay evento si el cursor se movio de verdad: fbtk_event
+             * junta movimientos en un bucle hasta que input devuelve false,
+             * asi que un stick descentrado contra el borde lo colgaba. */
+            if (nx != virtual_mouse_x || ny != virtual_mouse_y) {
+                virtual_mouse_x = nx;
+                virtual_mouse_y = ny;
+                event->type = NSFB_EVENT_MOVE_ABSOLUTE;
+                event->value.vector.x = virtual_mouse_x;
+                event->value.vector.y = virtual_mouse_y;
+                event->value.vector.z = 0;
+                return true;
+            }
         }
     }
 
