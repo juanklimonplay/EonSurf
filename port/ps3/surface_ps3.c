@@ -42,6 +42,10 @@ static int cross_down = 0;
 static int triangle_down = 0;
 static int circle_down = 0;
 static int start_down = 0;
+/* Mientras el teclado de Sony esta abierto el sistema se queda con el mando y
+ * el soltar del boton no llega; al cerrarlo se olvidan los botones y se ignoran
+ * un momento para no reabrirlo. */
+static unsigned long long buttons_ignore_until = 0;
 
 /* Posiciones de la barra de herramientas de NetSurf (layout "blfsrutc", 1280 px) */
 #define TOOLBAR_Y    15
@@ -281,6 +285,14 @@ static void evq_type(const char *text)
 }
 
 /* Mientras el teclado de Sony esta abierto se sigue mostrando la pantalla */
+static void osk_closed(void)
+{
+    last_pad.BTN_CROSS = last_pad.BTN_CIRCLE = 0;
+    last_pad.BTN_TRIANGLE = last_pad.BTN_START = 0;
+    cross_down = circle_down = triangle_down = start_down = 0;
+    buttons_ignore_until = now_ms() + 400;
+}
+
 static void osk_idle(void)
 {
     dirty = 1;
@@ -316,8 +328,9 @@ static void ask_url(void)
     char url[1024];
 
     eonsurf_osk_idle = osk_idle;
-    if (eonsurf_abrir_teclado("EonSurf: escribi una direccion o una busqueda", "", text, sizeof(text)) != 0 ||
-        text[0] == 0)
+    int r = eonsurf_abrir_teclado("EonSurf: escribi una direccion o una busqueda", "", text, sizeof(text));
+    osk_closed();
+    if (r != 0 || text[0] == 0)
         return;
     url_or_search(text, url, sizeof(url));
 
@@ -336,7 +349,9 @@ static void ask_text(void)
     char text[256] = {0};
 
     eonsurf_osk_idle = osk_idle;
-    if (eonsurf_abrir_teclado("EonSurf: texto para el campo seleccionado", "", text, sizeof(text)) != 0)
+    int r = eonsurf_abrir_teclado("EonSurf: texto para el campo seleccionado", "", text, sizeof(text));
+    osk_closed();
+    if (r != 0)
         return;
     evq_type(text);
 }
@@ -373,6 +388,11 @@ static void ps3_poll_pad(nsfb_t *nsfb)
     }
     if (!have_pad)
         return;
+
+    if (now_ms() < buttons_ignore_until) {
+        last_pad.BTN_CROSS = last_pad.BTN_CIRCLE = 0;
+        last_pad.BTN_TRIANGLE = last_pad.BTN_START = 0;
+    }
 
     /* Cruz: un clic por pulsacion (DOWN al apretar, UP al soltar) */
     if (last_pad.BTN_CROSS != cross_down) {
