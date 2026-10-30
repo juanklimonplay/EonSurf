@@ -1,5 +1,6 @@
 #!/bin/bash
 # Compila el nucleo de QuickJS-ng para la PS3 (sin quickjs-libc) y una prueba minima.
+T=$(cd "$(dirname "$0")" && pwd)
 export PS3DEV=/usr/local/ps3dev PSL1GHT=/usr/local/ps3dev
 export PATH=$PS3DEV/bin:$PS3DEV/ppu/bin:$PATH
 Q=${QJS_DIR:-/root/qjs}
@@ -18,8 +19,7 @@ powerpc64-ps3-elf-ar rcs ../obj/libqjs.a ../obj/*.o
 ls -la ../obj/libqjs.a
 
 # programa de prueba
-T=$(cd "$(dirname "$0")" && pwd)
-$CC $CF -I/root/qjs/src -c $T/prueba.c -o ../obj/main.o || exit 1
+$CC $CF -I$Q/src -c $T/prueba.c -o ../obj/main.o || exit 1
 powerpc64-ps3-elf-gcc -mcpu=cell -o ../obj/qjstest.elf ../obj/main.o ../obj/libqjs.a -L$PS3DEV/ppu/lib -L$PS3DEV/portlibs/ppu/lib -lrt -llv2 -lm || exit 1
 sprxlinker ../obj/qjstest.elf
 make_self ../obj/qjstest.elf ../obj/qjstest.self 2>/dev/null || make_self_npdrm ../obj/qjstest.elf ../obj/qjstest.self UP0001-EONS00002_00-0000000000000000
