@@ -257,7 +257,7 @@ static void evq_click_at(int x, int y)
 
 /* Teclado de EE.UU. como el de NetSurf: simbolos que van con Shift y su tecla base */
 static const char shifted_chars[] = "~!@#$%^&*()_+{}|:\"<>?";
-static const char shifted_base[]  = "`1234567890-=[]\;',./";
+static const char shifted_base[]  = "`1234567890-=[]\\;',./";
 
 /* Escribe texto ASCII como pulsaciones de teclado */
 static void evq_type(const char *text)
