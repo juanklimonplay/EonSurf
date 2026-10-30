@@ -30,6 +30,7 @@ static gcmContextData *ctx = NULL;
 static u32 *fb[2] = {NULL, NULL};
 static u32 fb_off[2];
 static int pad_initialized = 0;
+static int dirty = 0;
 static int virtual_mouse_x = 640;
 static int virtual_mouse_y = 360;
 
@@ -129,12 +130,25 @@ static int ps3_surface_finalise(nsfb_t *nsfb)
     return 0;
 }
 
+/* Muestra el buffer (siempre el 0) sin bloquear: si el flip anterior
+ * todavia no termino, queda pendiente y lo reintenta el proximo update o
+ * input. La PS3 escanea el buffer sola, pero RPCS3 solo presenta en flip. */
+static void ps3_present(void)
+{
+    if (!dirty || ctx == NULL || gcmGetFlipStatus() != 0)
+        return;
+    gcmResetFlipStatus();
+    gcmSetFlip(ctx, 0);
+    rsxFlushBuffer(ctx);
+    dirty = 0;
+}
+
 static int ps3_surface_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 {
-    /* El CPU escribe directo en el buffer que ya esta en pantalla:
-     * no hace falta flip ni esperar el vsync en cada zona redibujada. */
     (void)nsfb;
     (void)box;
+    dirty = 1;
+    ps3_present();
     return 0;
 }
 
@@ -143,6 +157,7 @@ static bool ps3_surface_input(nsfb_t *nsfb, nsfb_event_t *event, int timeout)
     (void)nsfb;
     (void)timeout;
     sysUtilCheckCallback();
+    ps3_present();
 
     if (!pad_initialized) return false;
 
