@@ -42,6 +42,8 @@ static int cross_down = 0;
 static int triangle_down = 0;
 static int circle_down = 0;
 static int start_down = 0;
+static int up_down = 0;
+static int down_down = 0;
 /* Mientras el teclado de Sony esta abierto el sistema se queda con el mando y
  * el soltar del boton no llega; al cerrarlo se olvidan los botones y se ignoran
  * un momento para no reabrirlo. */
@@ -415,6 +417,18 @@ static void ps3_poll_pad(nsfb_t *nsfb)
         start_down = last_pad.BTN_START;
         if (start_down)
             ask_text();
+    }
+
+    /* Cruceta arriba/abajo: una pantalla para arriba o para abajo */
+    if (last_pad.BTN_UP != up_down) {
+        up_down = last_pad.BTN_UP;
+        if (up_down)
+            evq_key(NSFB_KEY_PAGEUP);
+    }
+    if (last_pad.BTN_DOWN != down_down) {
+        down_down = last_pad.BTN_DOWN;
+        if (down_down)
+            evq_key(NSFB_KEY_PAGEDOWN);
     }
 
     /* Stick izquierdo: cursor. Solo hay evento si se movio de verdad: fbtk_event

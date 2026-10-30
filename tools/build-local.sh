@@ -76,6 +76,7 @@ ls -lh build-eonsurf/EBOOT.BIN
 if [ -n "${RPCS3_USRDIR:-}" ]; then
   cp build-eonsurf/EBOOT.BIN "$RPCS3_USRDIR/EBOOT.BIN"
   mkdir -p "$RPCS3_USRDIR/res" && cp -rL "$NS/netsurf/frontends/framebuffer/res/." "$RPCS3_USRDIR/res/"
+  mkdir -p "$RPCS3_USRDIR/startpage" && cp -r startpage/. "$RPCS3_USRDIR/startpage/"
   echo "[OK] EBOOT y res copiados a $RPCS3_USRDIR"
 fi
 

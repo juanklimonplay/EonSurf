@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>EonSurf</title>
+<!-- Pagina de inicio pensada para NetSurf: sin variables CSS, sin JavaScript,
+     sin emojis (la fuente interna no los tiene). -->
+<style>
+body {
+	background: #0c0f17;
+	color: #f0f4f8;
+	margin: 0;
+	padding: 24px 56px;
+	font-family: sans-serif;
+}
+h1 {
+	color: #00e5ff;
+	font-size: 40px;
+	margin: 0 0 4px 0;
+}
+p.sub {
+	color: #8a99ad;
+	margin: 0 0 20px 0;
+}
+form {
+	background: #161b26;
+	border: 2px solid #00e5ff;
+	padding: 14px;
+	margin: 0 0 24px 0;
+}
+input.q {
+	width: 70%;
+	font-size: 22px;
+	padding: 6px;
+}
+input.go {
+	font-size: 22px;
+	padding: 6px 18px;
+}
+table.tiles {
+	width: 100%;
+	border-spacing: 12px;
+	margin-left: -12px;
+}
+table.tiles td {
+	background: #161b26;
+	border: 1px solid #242d3d;
+	padding: 16px;
+	width: 33%;
+	vertical-align: top;
+}
+table.tiles a {
+	color: #00e5ff;
+	font-size: 22px;
+	font-weight: bold;
+	text-decoration: none;
+}
+table.tiles span {
+	display: block;
+	color: #8a99ad;
+	margin-top: 4px;
+}
+div.help {
+	color: #8a99ad;
+	border-top: 1px solid #242d3d;
+	margin-top: 20px;
+	padding-top: 12px;
+}
+div.help b {
+	color: #f0f4f8;
+}
+</style>
+</head>
+<body>
+<h1>EonSurf</h1>
+<p class="sub">Navegador web para PlayStation 3 con el motor NetSurf</p>
+
+<form action="https://lite.duckduckgo.com/lite/" method="get">
+	<input class="q" type="text" name="q" value="">
+	<input class="go" type="submit" value="Buscar">
+</form>
+
+<table class="tiles">
+<tr>
+	<td><a href="https://lite.duckduckgo.com/lite/">DuckDuckGo</a><span>Buscador liviano</span></td>
+	<td><a href="https://es.m.wikipedia.org/">Wikipedia</a><span>Enciclopedia en castellano</span></td>
+	<td><a href="https://text.npr.org/">NPR</a><span>Noticias en texto (inglés)</span></td>
+</tr>
+<tr>
+	<td><a href="https://lite.cnn.com/">CNN Lite</a><span>Noticias en texto (inglés)</span></td>
+	<td><a href="https://news.ycombinator.com/">Hacker News</a><span>Tecnología</span></td>
+	<td><a href="https://www.psx-place.com/">PSX-Place</a><span>Scene de PlayStation</span></td>
+</tr>
+</table>
+
+<div class="help">
+	<b>Stick izquierdo</b> mueve el cursor &middot; <b>X</b> clic &middot;
+	<b>Stick derecho</b> scroll &middot; <b>Cruceta arriba/abajo</b> subir/bajar una pantalla<br>
+	<b>Triángulo</b> escribir una dirección o una búsqueda &middot;
+	<b>START</b> escribir en el campo seleccionado &middot; <b>Círculo</b> volver atrás
+</div>
+</body>
+</html>

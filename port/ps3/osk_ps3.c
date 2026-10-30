@@ -57,12 +57,19 @@ static void utf8_to_utf16(const uint8_t *src, uint16_t *dst) {
 static void utf16_to_utf8(const uint16_t *src, uint8_t *dst, size_t max_len) {
     size_t written = 0;
     while (*src && written + 1 < max_len) {
-        if (*src < 0x80) {
-            dst[written++] = (uint8_t)*src;
+        uint16_t c = *src++;
+        if (c < 0x80) {
+            dst[written++] = (uint8_t)c;
+        } else if (c < 0x800) {
+            if (written + 3 > max_len) break;
+            dst[written++] = 0xc0 | (c >> 6);
+            dst[written++] = 0x80 | (c & 0x3f);
         } else {
-            dst[written++] = '?';
+            if (written + 4 > max_len) break;
+            dst[written++] = 0xe0 | (c >> 12);
+            dst[written++] = 0x80 | ((c >> 6) & 0x3f);
+            dst[written++] = 0x80 | (c & 0x3f);
         }
-        src++;
     }
     dst[written] = 0;
 }

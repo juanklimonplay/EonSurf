@@ -28,3 +28,6 @@ sed -i "s#~/.netsurf/Cookies#${PS3RES}/Cookies#g" netsurf/frontends/framebuffer/
 cp /etc/ssl/certs/ca-certificates.crt netsurf/frontends/framebuffer/res/ca-bundle.crt
 sed -i "s#^\([ \t]*\)nsoption_setnull_charp(cookie_jar, .*#&\n\1nsoption_setnull_charp(ca_bundle, strdup(\"${PS3RES}/ca-bundle.crt\"));#" netsurf/frontends/framebuffer/gui.c
 grep -n "Cookies\|ca_bundle" netsurf/frontends/framebuffer/gui.c
+# Pagina de inicio propia de EonSurf (startpage/ se copia a USRDIR al empaquetar)
+sed -i "s#^\([ \t]*\)nsoption_setnull_charp(ca_bundle, .*#&\n\1nsoption_setnull_charp(homepage_url, strdup(\"file://${PS3RES%/res}/startpage/inicio.html\"));#" netsurf/frontends/framebuffer/gui.c
+grep -n "homepage_url" netsurf/frontends/framebuffer/gui.c | head -3
