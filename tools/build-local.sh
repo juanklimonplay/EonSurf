@@ -60,10 +60,9 @@ elif [ "${EONSURF_VERBOSE:-0}" != 1 ] && grep -q EONSURF_VERBOSE "$GUI"; then
   sed -i 's/^\([ \t]*\){ \/\* EONSURF_VERBOSE .*$/\1nslog_init(nslog_stream_configure, \&argc, argv);/' "$GUI"
 fi
 
-# make de netsurf-all no reinstala libnsfb si ya hay build-stamp; se fuerza cuando cambia el driver
-if [ "$NS/libnsfb/src/surface/ps3.c" -nt "$NS/inst-framebuffer/build-stamp" ] 2>/dev/null; then
-  rm -f "$NS/inst-framebuffer/build-stamp" "$NS/netsurf/nsfb"
-fi
+# El make de netsurf-all salta todo si existe build-stamp; se borra siempre y cada
+# subproyecto recompila solo lo que cambio
+rm -f "$NS/inst-framebuffer/build-stamp"
 
 time make -C "$NS" TARGET=framebuffer HOST=powerpc64-ps3-elf NETSURF_FB_FONTLIB=internal -j"$(nproc)" > "$WORK_DIR/build.log" 2>&1 || {
   grep -E "error|undefined reference" "$WORK_DIR/build.log" | head -20; exit 1; }
