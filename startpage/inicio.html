@@ -1,56 +1,70 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <title>EonSurf</title>
-<!-- Pagina de inicio pensada para NetSurf: sin variables CSS, sin JavaScript,
-     sin emojis (la fuente interna no los tiene). -->
+<!-- Pagina de inicio pensada para NetSurf: sin variables CSS ni JavaScript.
+     Los gradientes y las esquinas redondeadas son imagenes (tools/make-startpage.py). -->
 <style>
 body {
 	background: #0c0f17;
-	color: #f0f4f8;
+	color: #e8ecf2;
 	margin: 0;
-	padding: 24px 56px;
+	padding: 20px 0 0 0;
 	font-family: sans-serif;
 }
-h1 {
-	color: #00e5ff;
-	font-size: 40px;
-	margin: 0 0 4px 0;
+div.page {
+	width: 1160px;
+	margin: 0 auto;
 }
-p.sub {
-	color: #8a99ad;
-	margin: 0 0 20px 0;
+div.hero {
+	background: #0c0f17 url(img/hero.png) no-repeat;
+	height: 230px;
 }
 form {
-	background: #161b26;
-	border: 2px solid #00e5ff;
-	padding: 14px;
-	margin: 0 0 24px 0;
+	background: #0c0f17 url(img/search.png) no-repeat;
+	height: 72px;
+	margin: 22px 0 28px 0;
 }
 input.q {
-	width: 70%;
-	font-size: 22px;
-	padding: 6px;
+	background: #181d29;
+	color: #ffffff;
+	border: 0;
+	font-size: 24px;
+	width: 900px;
+	height: 40px;
+	margin: 16px 0 0 72px;
 }
 input.go {
-	font-size: 22px;
-	padding: 6px 18px;
+	background: #00c8ff;
+	color: #0c0f17;
+	border: 0;
+	font-size: 20px;
+	font-weight: bold;
+	height: 44px;
+	width: 140px;
+	margin: 14px 0 0 12px;
+}
+h2 {
+	color: #8a99ad;
+	font-size: 16px;
+	font-weight: normal;
+	letter-spacing: 2px;
+	margin: 0 0 12px 4px;
 }
 table.tiles {
-	width: 100%;
-	border-spacing: 12px;
-	margin-left: -12px;
+	border-spacing: 0 20px;
+	margin: -20px 0 0 0;
 }
 table.tiles td {
-	background: #161b26;
-	border: 1px solid #242d3d;
-	padding: 16px;
-	width: 33%;
-	vertical-align: top;
+	width: 384px;
+	height: 92px;
+	padding: 0 0 0 92px;
+	vertical-align: middle;
+	background-repeat: no-repeat;
 }
 table.tiles a {
-	color: #00e5ff;
+	color: #ffffff;
 	font-size: 22px;
 	font-weight: bold;
 	text-decoration: none;
@@ -58,46 +72,46 @@ table.tiles a {
 table.tiles span {
 	display: block;
 	color: #8a99ad;
-	margin-top: 4px;
+	font-size: 16px;
 }
 div.help {
 	color: #8a99ad;
-	border-top: 1px solid #242d3d;
-	margin-top: 20px;
-	padding-top: 12px;
+	font-size: 16px;
+	margin-top: 30px;
+	padding: 16px 20px;
+	background: #151a25;
+	border: 1px solid #242d3d;
 }
-div.help b {
-	color: #f0f4f8;
-}
+div.help b { color: #00c8ff; }
 </style>
 </head>
 <body>
-<h1>EonSurf</h1>
-<p class="sub">Navegador web para PlayStation 3 con el motor NetSurf</p>
+<div class="page">
+<div class="hero"></div>
 
 <form action="https://lite.duckduckgo.com/lite/" method="get">
-	<input class="q" type="text" name="q" value="">
-	<input class="go" type="submit" value="Buscar">
+<input class="q" type="text" name="q" value=""><input class="go" type="submit" value="Buscar">
 </form>
 
+<h2>FAVORITOS</h2>
 <table class="tiles">
 <tr>
-	<td><a href="https://lite.duckduckgo.com/lite/">DuckDuckGo</a><span>Buscador liviano</span></td>
-	<td><a href="https://es.m.wikipedia.org/">Wikipedia</a><span>Enciclopedia en castellano</span></td>
-	<td><a href="https://text.npr.org/">NPR</a><span>Noticias en texto (inglés)</span></td>
+	<td style="background-image: url(img/card-duckduckgo.png)"><a href="https://lite.duckduckgo.com/lite/">DuckDuckGo</a><span>Buscador privado</span></td>
+		<td style="background-image: url(img/card-wikipedia.png)"><a href="https://es.m.wikipedia.org/">Wikipedia</a><span>Enciclopedia en castellano</span></td>
+		<td style="background-image: url(img/card-npr.png)"><a href="https://text.npr.org/">NPR</a><span>Noticias en texto</span></td>
 </tr>
 <tr>
-	<td><a href="https://lite.cnn.com/">CNN Lite</a><span>Noticias en texto (inglés)</span></td>
-	<td><a href="https://news.ycombinator.com/">Hacker News</a><span>Tecnología</span></td>
-	<td><a href="https://www.psx-place.com/">PSX-Place</a><span>Scene de PlayStation</span></td>
+	<td style="background-image: url(img/card-cnn.png)"><a href="https://lite.cnn.com/">CNN Lite</a><span>Noticias livianas</span></td>
+		<td style="background-image: url(img/card-hackernews.png)"><a href="https://news.ycombinator.com/">Hacker News</a><span>Tecnología</span></td>
+		<td style="background-image: url(img/card-psx.png)"><a href="https://www.psx-place.com/">PSX-Place</a><span>Scene de PlayStation</span></td>
 </tr>
 </table>
 
 <div class="help">
-	<b>Stick izquierdo</b> mueve el cursor &middot; <b>X</b> clic &middot;
-	<b>Stick derecho</b> scroll &middot; <b>Cruceta arriba/abajo</b> subir/bajar una pantalla<br>
-	<b>Triángulo</b> escribir una dirección o una búsqueda &middot;
-	<b>START</b> escribir en el campo seleccionado &middot; <b>Círculo</b> volver atrás &middot; <b>L2/R2</b> alejar/acercar
+	<b>Stick izq.</b> cursor &nbsp; <b>X</b> clic &nbsp; <b>Stick der.</b> scroll &nbsp;
+	<b>Cruceta</b> página arriba/abajo &nbsp; <b>△</b> dirección o búsqueda &nbsp;
+	<b>START</b> escribir &nbsp; <b>○</b> atrás &nbsp; <b>L2/R2</b> zoom
+</div>
 </div>
 </body>
 </html>

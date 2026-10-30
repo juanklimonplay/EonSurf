@@ -56,9 +56,9 @@ static int r2_down = 0;
  * un momento para no reabrirlo. */
 static unsigned long long buttons_ignore_until = 0;
 
-/* Posiciones de la barra de herramientas de NetSurf (layout "blfsrutc", 1280 px) */
-#define TOOLBAR_Y    15
-#define BACK_BTN_X   13
+/* Posiciones de la barra de herramientas de NetSurf (layout "bfrsut", barra de 52 px, ver tweak-sources.sh) */
+#define TOOLBAR_Y    26
+#define BACK_BTN_X   26
 #define URL_BAR_X    680
 static int virtual_mouse_x = 640;
 static int virtual_mouse_y = 360;

@@ -60,3 +60,108 @@ s = s[:at] + '''
 open(p, 'w').write(s)
 print('teclas EonSurf agregadas')
 PY
+
+# Tema EonSurf: fuentes Noto con FreeType, barra oscura de 52 px, iconos y punteros nuevos
+# (los PNG salen de tools/make-theme.py)
+cp ../../ps3/theme/icons/*.png netsurf/frontends/framebuffer/res/icons/
+cp ../../ps3/theme/throbber/*.png netsurf/frontends/framebuffer/res/throbber/
+cp ../../ps3/theme/pointers/*.png netsurf/frontends/framebuffer/res/pointers/
+mkdir -p netsurf/frontends/framebuffer/res/fonts
+cp ../../ps3/fonts/*.ttf ../../ps3/fonts/OFL.txt netsurf/frontends/framebuffer/res/fonts/
+cat >> netsurf/Makefile.config <<'MK'
+override NETSURF_FB_FONTLIB := freetype
+override NETSURF_FB_FONT_SANS_SERIF := NotoSans-Regular.ttf
+override NETSURF_FB_FONT_SANS_SERIF_BOLD := NotoSans-Bold.ttf
+override NETSURF_FB_FONT_SANS_SERIF_ITALIC := NotoSans-Italic.ttf
+override NETSURF_FB_FONT_SANS_SERIF_ITALIC_BOLD := NotoSans-BoldItalic.ttf
+override NETSURF_FB_FONT_SERIF := NotoSerif-Regular.ttf
+override NETSURF_FB_FONT_SERIF_BOLD := NotoSerif-Bold.ttf
+override NETSURF_FB_FONT_MONOSPACE := NotoSansMono-Regular.ttf
+override NETSURF_FB_FONT_MONOSPACE_BOLD := NotoSansMono-Bold.ttf
+override NETSURF_FB_FONT_CURSIVE := NotoSans-Italic.ttf
+override NETSURF_FB_FONT_FANTASY := NotoSans-Bold.ttf
+MK
+python3 - <<'PY'
+import re
+fb = 'netsurf/frontends/framebuffer/'
+
+def patch(path, old, new, count=1, regex=False):
+    s = open(path).read()
+    if regex:
+        s2, n = re.subn(old, new, s)
+    else:
+        n = s.count(old)
+        s2 = s.replace(old, new)
+    assert n >= count, (path, old)
+    open(path, 'w').write(s2)
+
+# colores (0xAABBGGRR): barra #1B1F2A, barras de desplazamiento #4A5468
+patch(fb + 'fbtk.h', '#define FB_SCROLL_COLOUR 0xFFAAAAAA', '#define FB_SCROLL_COLOUR 0xFF68544A')
+patch(fb + 'fbtk.h', '#define FB_FRAME_COLOUR 0xFFDDDDDD', '#define FB_FRAME_COLOUR 0xFF2A1F1B')
+patch(fb + 'fbtk/scroll.c', '1, 0xFF999999, false, false);', '1, widget->fg, false, false);', 2)
+
+# tamanos y orden de la barra: atras, adelante, recargar, detener, URL, carga
+patch(fb + 'options.h', 'NSOPTION_INTEGER(fb_toolbar_size, 30)', 'NSOPTION_INTEGER(fb_toolbar_size, 52)')
+patch(fb + 'options.h', 'NSOPTION_INTEGER(fb_furniture_size, 18)', 'NSOPTION_INTEGER(fb_furniture_size, 22)')
+patch(fb + 'gui.c', '#define NSFB_TOOLBAR_DEFAULT_LAYOUT "blfsrutc"', '#define NSFB_TOOLBAR_DEFAULT_LAYOUT "bfrsut"')
+patch(fb + 'gui.c', r'(create_toolbar\(gw,\s*toolbar_height,\s*)2,', r'\g<1>6,', regex=True)
+patch(fb + 'gui.c', 'resize_toolbar(gw, toolbar_height, 2,', 'resize_toolbar(gw, toolbar_height, 6,')
+
+# barra de direcciones gris azulada con texto claro; estado en gris suave
+patch(fb + 'gui.c', r'FB_COLOUR_WHITE,(\s*)FB_COLOUR_BLACK,(\s*)true,(\s*)fb_url_enter',
+      r'0xFF45332C,\g<1>0xFFF2ECE8,\g<2>true,\g<3>fb_url_enter', regex=True)
+patch(fb + 'gui.c', r'(gw->status = fbtk_create_text\([^;]*?)FB_COLOUR_BLACK', r'\g<1>0xFFB8A59A', regex=True)
+
+# controles de formularios de las paginas con colores actuales
+for name, col in (('ButtonFace', '0x00f5f1ee'), ('ButtonHighlight', '0x00ffffff'),
+                  ('ButtonShadow', '0x00ddd6d0'), ('ThreeDFace', '0x00f5f1ee'),
+                  ('ThreeDHighlight', '0x00ffffff'), ('ThreeDLightShadow', '0x00ddd6d0'),
+                  ('ThreeDShadow', '0x00c4bab3'), ('ThreeDDarkShadow', '0x00a0948c'),
+                  ('Highlight', '0x00ffc800'), ('Window', '0x00ffffff')):
+    patch(fb + 'gui.c', r'(nsoption_set_colour\(sys_colour_%s, )0x[0-9a-fA-F]{8}' % name,
+          r'\g<1>%s' % col, regex=True)
+
+# campos de texto con borde (la barra de direcciones) con esquinas redondeadas
+patch(fb + 'fbtk/text.c', '''	/* clear background */
+	if ((widget->bg & 0xFF000000) != 0) {
+		/* transparent polygon filling isnt working so fake it */
+		nsfb_plot_rectangle_fill(root->u.root.fb, &bbox, widget->bg);
+	}
+
+	/* widget can have a single pixel outline border */
+	if (widget->u.text.outline) {
+		rect.x1--;
+		rect.y1--;
+		nsfb_plot_rectangle(root->u.root.fb, &rect, 1,
+				0x00000000, false, false);
+	}
+''', '''	/* clear background */
+	if (widget->u.text.outline) {
+		/* EonSurf: rectangulo redondeado sobre el color de la barra */
+		int r = (bbox.y1 - bbox.y0) / 4;
+		int dy;
+		nsfb_plot_rectangle_fill(root->u.root.fb, &bbox, FB_FRAME_COLOUR);
+		for (dy = 0; dy < bbox.y1 - bbox.y0; dy++) {
+			int e = dy < r ? r - dy : dy >= bbox.y1 - bbox.y0 - r ? dy - (bbox.y1 - bbox.y0 - r) + 1 : 0;
+			int in = r - (int)sqrt((double)(r * r - e * e));
+			nsfb_bbox_t row = { bbox.x0 + in, bbox.y0 + dy, bbox.x1 - in, bbox.y0 + dy + 1 };
+			nsfb_plot_rectangle_fill(root->u.root.fb, &row, widget->bg);
+		}
+	} else if ((widget->bg & 0xFF000000) != 0) {
+		/* transparent polygon filling isnt working so fake it */
+		nsfb_plot_rectangle_fill(root->u.root.fb, &bbox, widget->bg);
+	}
+''')
+patch(fb + 'fbtk/text.c', '#include <libnsfb_plot.h>', '#include <math.h>\n#include <libnsfb_plot.h>')
+# el texto de la barra no debe pegarse a la curva
+patch(fb + 'fbtk/text.c', '\tif (widget->u.text.outline)\n\t\t*padding = 1;', '\tif (widget->u.text.outline)\n\t\t*padding = 4;')
+# las imagenes compiladas (iconos, punteros) son palabras 0xAABBGGRR: en la PS3
+# (big-endian) los bytes van al reves que en la PC donde corre convert_image
+patch('netsurf/tools/convert_image.c', '\t\tmemcpy(row, new_row, rowbytes);\n',
+      '\t\tmemcpy(row, new_row, rowbytes);\n'
+      '\t\tfor (i = 0; i + 3 < rowbytes; i += 4) { /* EonSurf: RGBA -> ABGR */\n'
+      '\t\t\tunsigned char t = row[i]; row[i] = row[i + 3]; row[i + 3] = t;\n'
+      '\t\t\tt = row[i + 1]; row[i + 1] = row[i + 2]; row[i + 2] = t;\n'
+      '\t\t}\n')
+print('tema EonSurf aplicado')
+PY
