@@ -44,6 +44,13 @@ static int circle_down = 0;
 static int start_down = 0;
 static int up_down = 0;
 static int down_down = 0;
+static int l2_down = 0;
+static int r2_down = 0;
+
+/* Teclas propias que entiende el NetSurf de EonSurf (ver tweak-sources.sh) */
+#define EONSURF_KEY_UNICODE  0x10000   /* + caracter Unicode */
+#define EONSURF_KEY_ZOOM_OUT 0x7F01
+#define EONSURF_KEY_ZOOM_IN  0x7F02
 /* Mientras el teclado de Sony esta abierto el sistema se queda con el mando y
  * el soltar del boton no llega; al cerrarlo se olvidan los botones y se ignoran
  * un momento para no reabrirlo. */
@@ -280,12 +287,28 @@ static void evq_page(int down)
 static const char shifted_chars[] = "~!@#$%^&*()_+{}|:\"<>?";
 static const char shifted_base[]  = "`1234567890-=[]\\;',./";
 
-/* Escribe texto ASCII como pulsaciones de teclado */
+/* Escribe texto UTF-8 como pulsaciones de teclado. ASCII va con las teclas
+ * normales (Shift para mayusculas y simbolos); el resto, como caracter Unicode. */
 static void evq_type(const char *text)
 {
-    for (; *text; text++) {
-        unsigned char c = (unsigned char)*text;
-        const char *sh = (c != 0) ? strchr(shifted_chars, c) : NULL;
+    const unsigned char *p = (const unsigned char *)text;
+
+    while (*p) {
+        unsigned char c = *p;
+        const char *sh = strchr(shifted_chars, c);
+
+        if (c >= 0x80) {
+            unsigned int cp;
+            int extra;
+            if ((c & 0xe0) == 0xc0) { cp = c & 0x1f; extra = 1; }
+            else if ((c & 0xf0) == 0xe0) { cp = c & 0x0f; extra = 2; }
+            else { p++; continue; }
+            p++;
+            while (extra-- > 0 && (*p & 0xc0) == 0x80)
+                cp = (cp << 6) | (*p++ & 0x3f);
+            evq_key(EONSURF_KEY_UNICODE + cp);
+            continue;
+        }
 
         if (c >= 'A' && c <= 'Z') {
             evq_push(NSFB_EVENT_KEY_DOWN, NSFB_KEY_LSHIFT, 0, 0);
@@ -298,6 +321,7 @@ static void evq_type(const char *text)
         } else if (c >= 32 && c < 127) {
             evq_key(c);
         }
+        p++;
     }
 }
 
@@ -432,6 +456,18 @@ static void ps3_poll_pad(nsfb_t *nsfb)
         start_down = last_pad.BTN_START;
         if (start_down)
             ask_text();
+    }
+
+    /* L2 / R2: zoom de la pagina */
+    if (last_pad.BTN_L2 != l2_down) {
+        l2_down = last_pad.BTN_L2;
+        if (l2_down)
+            evq_key(EONSURF_KEY_ZOOM_OUT);
+    }
+    if (last_pad.BTN_R2 != r2_down) {
+        r2_down = last_pad.BTN_R2;
+        if (r2_down)
+            evq_key(EONSURF_KEY_ZOOM_IN);
     }
 
     /* Cruceta arriba/abajo: una pantalla para arriba o para abajo */

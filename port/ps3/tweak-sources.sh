@@ -31,3 +31,32 @@ grep -n "Cookies\|ca_bundle" netsurf/frontends/framebuffer/gui.c
 # Pagina de inicio propia de EonSurf (startpage/ se copia a USRDIR al empaquetar)
 sed -i "s#^\([ \t]*\)nsoption_setnull_charp(ca_bundle, .*#&\n\1nsoption_setnull_charp(homepage_url, strdup(\"file://${PS3RES%/res}/startpage/inicio.html\"));#" netsurf/frontends/framebuffer/gui.c
 grep -n "homepage_url" netsurf/frontends/framebuffer/gui.c | head -3
+
+# Teclas extra que manda el driver PS3 (ver EONSURF_KEY_* en surface_ps3.c):
+#  - 0x10000 + caracter Unicode: acentos y enie desde el teclado en pantalla
+#  - 0x7F01 / 0x7F02: zoom de la pagina con L2 / R2
+python3 - <<'PY'
+p = 'netsurf/frontends/framebuffer/fbtk/event.c'
+s = open(p).read()
+old = 'fbtk_keycode_to_ucs4(int code, fbtk_modifier_type mods)\n{\n\tint ucs4 = -1;\n'
+assert old in s
+s = s.replace(old, old + '\n\tif (code >= 0x10000)\n\t\treturn code - 0x10000; /* EonSurf: caracter Unicode directo */\n', 1)
+open(p, 'w').write(s)
+
+p = 'netsurf/frontends/framebuffer/gui.c'
+s = open(p).read()
+old = '\tcase NSFB_EVENT_KEY_DOWN:\n\t\tswitch (cbi->event->value.keycode) {\n'
+# el mismo switch esta en el manejador de clics; se inserta en el de teclas (despues de "got value")
+at = s.index(old, s.index('"got value %d"')) + len(old)
+s = s[:at] + '''
+		case 0x7F01: /* EonSurf: L2 = alejar */
+			browser_window_set_scale(gw->bw, -0.25, false);
+			break;
+
+		case 0x7F02: /* EonSurf: R2 = acercar */
+			browser_window_set_scale(gw->bw, 0.25, false);
+			break;
+''' + s[at:]
+open(p, 'w').write(s)
+print('teclas EonSurf agregadas')
+PY
