@@ -29,8 +29,6 @@
 static gcmContextData *ctx = NULL;
 static u32 *fb[2] = {NULL, NULL};
 static u32 fb_off[2];
-static int cur_buffer = 0;
-static int first_flip = 1;
 static int pad_initialized = 0;
 static int virtual_mouse_x = 640;
 static int virtual_mouse_y = 360;
@@ -85,11 +83,19 @@ static int ps3_surface_initialise(nsfb_t *nsfb)
             gcmSetDisplayBuffer(i, fb_off[i], nsfb->linelen, nsfb->width, nsfb->height);
         }
 
+        /* Un solo buffer visible: NetSurf redibuja por zonas, asi que
+         * alternar buffers dejaria contenido viejo en el otro. */
+        memset(fb[0], 0xff, nsfb->height * nsfb->linelen);
+        gcmResetFlipStatus();
+        gcmSetFlip(ctx, 0);
+        rsxFlushBuffer(ctx);
+        gcmSetWaitFlip(ctx);
+
         ioPadInit(7);
         pad_initialized = 1;
     }
 
-    nsfb->ptr = (uint8_t *)fb[cur_buffer];
+    nsfb->ptr = (uint8_t *)fb[0];
     return 0;
 }
 
@@ -125,22 +131,10 @@ static int ps3_surface_finalise(nsfb_t *nsfb)
 
 static int ps3_surface_update(nsfb_t *nsfb, nsfb_bbox_t *box)
 {
+    /* El CPU escribe directo en el buffer que ya esta en pantalla:
+     * no hace falta flip ni esperar el vsync en cada zona redibujada. */
     (void)nsfb;
     (void)box;
-
-    if (!first_flip) {
-        while (gcmGetFlipStatus() != 0) usleep(200);
-    }
-    gcmResetFlipStatus();
-    gcmSetFlip(ctx, cur_buffer);
-    rsxFlushBuffer(ctx);
-    gcmSetWaitFlip(ctx);
-
-    cur_buffer ^= 1;
-    first_flip = 0;
-
-    /* Apuntar la superficie de NetSurf al buffer activo siguiente */
-    nsfb->ptr = (uint8_t *)fb[cur_buffer];
     return 0;
 }
 
