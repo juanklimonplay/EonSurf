@@ -10,6 +10,8 @@ EonSurf es la versión **nativa**: todo corre en la PS3, sin servidores.
    - Pendiente de la etapa 1: código HTTP real (hoy 200 o error), cabeceras propias, POST con JSON,
      guardado diferido de localStorage, redibujo parcial en vez de rehacer toda la página.
    - Etapa 2: QuickJS (JavaScript moderno, ES2023) con un generador de bindings propio.
+     Paso 1 hecho (30-10-2026): QuickJS-ng 0.17.0 compila para PPU y pasa 21 pruebas de ES2023
+     en RPCS3, incluida la de big-endian; 2 millones de vueltas en ~355 ms (tools/quickjs-ps3/).
 2. **Pestañas** (L1/R1) y **menú START** (marcadores, historial, opciones).
 3. **Pantalla completa** (□) y **modo lector** (SELECT).
 4. **Descargas**: `.pkg` a `/dev_hdd0/packages/`, el resto a `/dev_hdd0/downloads/`.
