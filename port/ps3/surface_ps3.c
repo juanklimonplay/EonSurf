@@ -229,8 +229,8 @@ static nsfb_surface_rtns_t ps3_rt_surface = {
     .cursor = NULL,
 };
 
-#ifndef NSFB_SURFACE_PS3
-#define NSFB_SURFACE_PS3 NSFB_SURFACE_RAM
-#endif
-
+/* NSFB_SURFACE_PS3 lo agrega tweak-sources.sh al enum de libnsfb.h. Antes habia
+ * un #ifndef que, al ser un enum y no una macro, registraba esta superficie como
+ * RAM: las imagenes y miniaturas recibian la pantalla real y al liberarlas se
+ * apagaban el RSX y el mando. */
 NSFB_SURFACE_DEF(ps3, NSFB_SURFACE_PS3, &ps3_rt_surface)
