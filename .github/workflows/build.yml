@@ -57,6 +57,34 @@ jobs:
           echo "${PS3DEV}/ppu/bin" >> $GITHUB_PATH
           echo "${PS3DEV}/spu/bin" >> $GITHUB_PATH
 
+      - name: 6b. Compilar libiconv estática para PS3 (newlib no trae iconv)
+        run: |
+          export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin
+          PREFIX=/usr/local/ps3dev/portlibs/ppu
+          if [ ! -f "$PREFIX/lib/libiconv.a" ]; then
+            wget -q https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+            tar xzf libiconv-1.17.tar.gz
+            cd libiconv-1.17
+            CFLAGS="-O2 -mcpu=cell" ./configure --host=powerpc64-ps3-elf --prefix="$PREFIX" \
+              --enable-static --disable-shared --disable-nls
+            make -C libcharset && make -C lib
+            mkdir -p "$PREFIX/lib"
+            cp lib/.libs/libiconv.a "$PREFIX/lib/libiconv.a"
+            # NetSurf usa los nombres POSIX (iconv_open/iconv/iconv_close) del header de newlib;
+            # GNU libiconv exporta libiconv_*, así que agregamos alias con los nombres POSIX.
+            printf '%s\n' '#include <stddef.h>' 'typedef void *iconv_t;' \
+              'iconv_t libiconv_open(const char *, const char *);' \
+              'size_t libiconv(iconv_t, char **, size_t *, char **, size_t *);' \
+              'int libiconv_close(iconv_t);' \
+              'iconv_t iconv_open(const char *t, const char *f) { return libiconv_open(t, f); }' \
+              'size_t iconv(iconv_t c, char **i, size_t *il, char **o, size_t *ol) { return libiconv(c, i, il, o, ol); }' \
+              'int iconv_close(iconv_t c) { return libiconv_close(c); }' > posix_alias.c
+            powerpc64-ps3-elf-gcc -O2 -c posix_alias.c -o posix_alias.o
+            powerpc64-ps3-elf-ar rcs "$PREFIX/lib/libiconv.a" posix_alias.o lib/../libcharset/lib/.libs/*.o 2>/dev/null || \
+              powerpc64-ps3-elf-ar rcs "$PREFIX/lib/libiconv.a" posix_alias.o
+          fi
+          powerpc64-ps3-elf-nm "$PREFIX/lib/libiconv.a" | grep -E " T (iconv_open|iconv|iconv_close)$"
+
       - name: 7. Compilar NetSurf completo (HTML5 + CSS + DOM + Framebuffer) para PS3
         run: |
           export PATH=$PATH:${PS3DEV}/bin:${PS3DEV}/ppu/bin:${PS3DEV}/spu/bin
@@ -79,6 +107,8 @@ jobs:
           if [ -f "netsurf/nsfb" ]; then
             echo "[OK] netsurf/nsfb compilado exitosamente!"
             ls -lh netsurf/nsfb
+          else
+            echo "::error::NetSurf (nsfb) NO enlazo; el PKG de este run es el respaldo viejo"
           fi
 
       - name: 8. Compilar EonSurf (Cell B.E. + AltiVec) & Empaquetar PKG
