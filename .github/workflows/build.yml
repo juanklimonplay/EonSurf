@@ -67,7 +67,8 @@ jobs:
             cd libiconv-1.17
             CFLAGS="-O2 -mcpu=cell" ./configure --host=powerpc64-ps3-elf --prefix="$PREFIX" \
               --enable-static --disable-shared --disable-nls
-            make -C libcharset && make -C lib
+            make -C libcharset && make -C libcharset install-lib libdir="$PWD/lib" includedir="$PWD/lib"
+            make -C lib
             mkdir -p "$PREFIX/lib"
             cp lib/.libs/libiconv.a "$PREFIX/lib/libiconv.a"
             # NetSurf usa los nombres POSIX (iconv_open/iconv/iconv_close) del header de newlib;
