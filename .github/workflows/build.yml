@@ -101,6 +101,13 @@ jobs:
           echo "==> Copiando driver surface_ps3.c a libnsfb..."
           cp ../../ps3/surface_ps3.c libnsfb/src/surface/ps3.c
 
+          echo "==> Rutas de recursos y cookies dentro de USRDIR de la PS3..."
+          PS3RES="/dev_hdd0/game/${TITLE_ID}/USRDIR/res"
+          printf '%s
+' "override NETSURF_FB_RESPATH := ${PS3RES}/" "override NETSURF_FB_FONTPATH := ${PS3RES}/fonts" > netsurf/Makefile.config
+          sed -i "s#~/.netsurf/Cookies#${PS3RES}/Cookies#g" netsurf/frontends/framebuffer/gui.c
+          grep -n "Cookies" netsurf/frontends/framebuffer/gui.c
+
           echo "==> Compilando stack completo de NetSurf para Cell B.E. (HOST=powerpc64-ps3-elf)..."
           make TARGET=framebuffer HOST=powerpc64-ps3-elf NETSURF_FB_FONTLIB=internal Q= || true
           ls -la inst-framebuffer/lib/ || true
@@ -124,6 +131,10 @@ jobs:
           mkdir -p pkg_build/USRDIR
 
           if [ -d "startpage" ]; then cp -r startpage pkg_build/USRDIR/; fi
+          if [ -d "${WORK_DIR}/netsurf-all-3.11/netsurf/frontends/framebuffer/res" ]; then
+            cp -rL "${WORK_DIR}/netsurf-all-3.11/netsurf/frontends/framebuffer/res" pkg_build/USRDIR/res
+            echo "[OK] recursos de NetSurf en USRDIR/res:"; ls pkg_build/USRDIR/res pkg_build/USRDIR/res/en
+          fi
           if [ -f "pkg/ICON0.PNG" ]; then
             cp pkg/ICON0.PNG pkg_build/ICON0.PNG
           elif [ -f "src/pkg/ICON0.PNG" ]; then
