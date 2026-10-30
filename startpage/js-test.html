@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Prueba de JavaScript</title>
+<style>
+body { background: #0c0f17; color: #e8ecf2; font-family: sans-serif; padding: 24px 60px; }
+h1 { color: #00c8ff; }
+li { font-size: 20px; margin: 6px 0; }
+.ok { color: #3ddc84; }
+.no { color: #ff5c5c; }
+</style>
+</head>
+<body>
+<h1>Prueba de JavaScript</h1>
+<p id="estado">JavaScript NO se ejecutó.</p>
+<ul id="lista"></ul>
+<script>
+var lista = document.getElementById('lista');
+function prueba(nombre, fn) {
+	var li = document.createElement('li');
+	var ok = false, extra = '';
+	try { ok = fn(); } catch (e) { extra = ' (' + e + ')'; }
+	li.className = ok ? 'ok' : 'no';
+	li.appendChild(document.createTextNode((ok ? 'OK  ' : 'FALLA  ') + nombre + extra));
+	lista.appendChild(li);
+}
+document.getElementById('estado').textContent = 'JavaScript se ejecutó (motor de EonSurf).';
+prueba('getElementById / textContent', function () { return document.getElementById('estado') !== null; });
+prueba('createElement / appendChild', function () { return lista.childNodes.length >= 1; });
+prueba('innerHTML', function () { var d = document.createElement('div'); d.innerHTML = '<b>x</b>'; return d.firstChild && d.firstChild.nodeName === 'B'; });
+prueba('querySelector', function () { return document.querySelector('#lista') === lista; });
+prueba('JSON', function () { return JSON.parse(JSON.stringify({a: [1, 2]})).a[1] === 2; });
+prueba('setTimeout', function () { setTimeout(function () { prueba('setTimeout (llegó)', function () { return true; }); }, 300); return true; });
+prueba('addEventListener', function () { document.body.addEventListener('click', function () {}); return true; });
+prueba('classList', function () { return !!document.body.classList; });
+prueba('localStorage', function () { localStorage.setItem('eon', '1'); return localStorage.getItem('eon') === '1'; });
+prueba('XMLHttpRequest', function () { return typeof XMLHttpRequest !== 'undefined'; });
+prueba('fetch', function () { return typeof fetch === 'function'; });
+prueba('Promise', function () { return typeof Promise === 'function'; });
+prueba('flechas / let (ES6)', function () { return eval('(() => { let a = 2; return a * 2; })()') === 4; });
+</script>
+</body>
+</html>

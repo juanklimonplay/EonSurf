@@ -165,3 +165,7 @@ patch('netsurf/tools/convert_image.c', '\t\tmemcpy(row, new_row, rowbytes);\n',
       '\t\t}\n')
 print('tema EonSurf aplicado')
 PY
+
+# JavaScript: Duktape ya se compila, pero NetSurf lo trae apagado por defecto
+sed -i 's/^NSOPTION_BOOL(enable_javascript, false)/NSOPTION_BOOL(enable_javascript, true)/' netsurf/desktop/options.h
+grep -n "enable_javascript" netsurf/desktop/options.h
