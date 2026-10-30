@@ -45,11 +45,7 @@ fi
 if [ "${1:-}" = "--fresh" ] || [ ! -d "$NS" ]; then
   rm -rf "$NS"
   bash port/fetch.sh "$WORK_DIR"
-  (cd "$NS" && bash ../../ps3/tweak-sources.sh > /dev/null)
-  PS3RES="/dev_hdd0/game/$TITLE_ID/USRDIR/res"
-  echo "override NETSURF_FB_RESPATH := $PS3RES/" > "$NS/netsurf/Makefile.config"
-  echo "override NETSURF_FB_FONTPATH := $PS3RES/fonts" >> "$NS/netsurf/Makefile.config"
-  sed -i "s#~/.netsurf/Cookies#$PS3RES/Cookies#g" "$NS/netsurf/frontends/framebuffer/gui.c"
+  (cd "$NS" && TITLE_ID=$TITLE_ID bash ../../ps3/tweak-sources.sh > /dev/null)
 else
   cmp -s port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c" || cp port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c"
 fi

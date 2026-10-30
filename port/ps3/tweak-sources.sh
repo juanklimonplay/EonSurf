@@ -16,3 +16,13 @@ sed -i 's/^\([ \t]*\)ret = netsurf_register(&framebuffer_table);/&\n\1bitmap_set
 
 grep -in "ps3" libnsfb/src/surface/Makefile libnsfb/include/libnsfb.h netsurf/frontends/framebuffer/gui.c
 grep -n "bitmap_set_format\|netsurf/bitmap.h" netsurf/frontends/framebuffer/gui.c
+
+# Recursos, cookies y certificados en USRDIR de la PS3 (TITLE_ID viene del entorno)
+PS3RES="/dev_hdd0/game/${TITLE_ID:-EONS00001}/USRDIR/res"
+echo "override NETSURF_FB_RESPATH := ${PS3RES}/" > netsurf/Makefile.config
+echo "override NETSURF_FB_FONTPATH := ${PS3RES}/fonts" >> netsurf/Makefile.config
+sed -i "s#~/.netsurf/Cookies#${PS3RES}/Cookies#g" netsurf/frontends/framebuffer/gui.c
+# La PS3 no trae certificados raiz: se lleva el paquete de Mozilla del sistema de compilacion
+cp /etc/ssl/certs/ca-certificates.crt netsurf/frontends/framebuffer/res/ca-bundle.crt
+sed -i "s#^\([ \t]*\)nsoption_setnull_charp(cookie_jar, .*#&\n\1nsoption_setnull_charp(ca_bundle, strdup(\"${PS3RES}/ca-bundle.crt\"));#" netsurf/frontends/framebuffer/gui.c
+grep -n "Cookies\|ca_bundle" netsurf/frontends/framebuffer/gui.c
