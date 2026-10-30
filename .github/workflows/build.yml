@@ -84,7 +84,7 @@ jobs:
             powerpc64-ps3-elf-ar rcs "$PREFIX/lib/libiconv.a" posix_alias.o lib/../libcharset/lib/.libs/*.o 2>/dev/null || \
               powerpc64-ps3-elf-ar rcs "$PREFIX/lib/libiconv.a" posix_alias.o
           fi
-          powerpc64-ps3-elf-nm "$PREFIX/lib/libiconv.a" | grep -E " T (iconv_open|iconv|iconv_close)$"
+          powerpc64-ps3-elf-nm "$PREFIX/lib/libiconv.a" | grep -E "iconv(_open|_close)?$"
 
       - name: 7. Compilar NetSurf completo (HTML5 + CSS + DOM + Framebuffer) para PS3
         run: |
