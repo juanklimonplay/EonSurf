@@ -41,6 +41,7 @@ prueba('XMLHttpRequest', function () { return typeof XMLHttpRequest !== 'undefin
 prueba('fetch', function () { return typeof fetch === 'function'; });
 prueba('Promise', function () { return typeof Promise === 'function'; });
 prueba('flechas / let (ES6)', function () { return eval('(() => { let a = 2; return a * 2; })()') === 4; });
+prueba('clases, async, ?. (ES2020+)', function () { return eval('class A { #x = 1; get x() { return this.#x; } }; (async () => 1)() instanceof Promise && new A().x === 1 && ({})?.a?.b === undefined'); });
 prueba('matches / closest', function () { return lista.matches('ul#lista') && lista.closest('body') === document.body; });
 prueba('querySelectorAll', function () { return document.querySelectorAll('li.ok').length >= 3; });
 Promise.resolve(41).then(function (v) { prueba('Promise.then (llegó)', function () { return v + 1 === 42; }); });
@@ -58,6 +59,18 @@ prueba('localStorage persistente', function () {
 	document.getElementById('estado').textContent += ' Visitas a esta página: ' + visitas + '.';
 	return true;
 });
+prueba('motor: ' + (typeof __ns === 'object' ? 'QuickJS' : 'Duktape'), function () { return true; });
+prueba('instanceof HTMLElement', function () { return document.body instanceof HTMLElement && lista instanceof Element; });
+prueba('classList.toggle', function () { var d = document.createElement('div'); d.classList.toggle('a'); return d.className === 'a' && d.classList.contains('a'); });
+prueba('style', function () { var d = document.createElement('div'); d.style.backgroundColor = 'red'; return /background-color:\s*red/.test(d.getAttribute('style')); });
+prueba('dataset', function () { var d = document.createElement('div'); d.dataset.fooBar = '1'; return d.getAttribute('data-foo-bar') === '1'; });
+prueba('URL', function () { var u = new URL('../b?x=1#h', 'https://a.com/c/d'); return u.href === 'https://a.com/b?x=1#h' && u.searchParams.get('x') === '1'; });
+prueba('CustomEvent', function () { var d = document.createElement('div'), got = 0; d.addEventListener('hola', function (e) { got = e.detail; }); d.dispatchEvent(new CustomEvent('hola', { detail: 7 })); return got === 7; });
+prueba('innerHTML get', function () { var d = document.createElement('div'); d.innerHTML = '<b class="x">hi</b>'; return d.innerHTML === '<b class="x">hi</b>'; });
+if (typeof MutationObserver === 'function') {
+	var mo = new MutationObserver(function (recs) { prueba('MutationObserver (llegó ' + recs.length + ')', function () { return recs.length > 0; }); mo.disconnect(); });
+	mo.observe(lista, { childList: true });
+}
 var n = 0;
 setInterval(function () {
 	n++;

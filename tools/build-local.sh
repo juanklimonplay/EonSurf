@@ -41,6 +41,9 @@ EOF
   cd "$REPO"; rm -rf "$T"
 fi
 
+# Motor JavaScript QuickJS-ng (libqjs.a en portlibs)
+bash port/ps3/quickjs/build-lib.sh "$WORK_DIR"
+
 # Fuentes de NetSurf: se bajan y parchean una vez; despues solo se refresca el driver PS3
 if [ "${1:-}" = "--fresh" ] || [ ! -d "$NS" ]; then
   rm -rf "$NS"
@@ -50,6 +53,11 @@ else
   cmp -s port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c" || cp port/ps3/surface_ps3.c "$NS/libnsfb/src/surface/ps3.c"
   cmp -s port/ps3/osk_ps3.c "$NS/libnsfb/src/surface/ps3_osk.c" || cp port/ps3/osk_ps3.c "$NS/libnsfb/src/surface/ps3_osk.c"
   cmp -s port/ps3/osk_ps3.h "$NS/libnsfb/src/surface/osk_ps3.h" || cp port/ps3/osk_ps3.h "$NS/libnsfb/src/surface/osk_ps3.h"
+  Q="$NS/netsurf/content/handlers/javascript/quickjs"
+  if [ -d "$Q" ]; then
+    cmp -s port/ps3/quickjs/eon_qjs.c "$Q/eon_qjs.c" || cp port/ps3/quickjs/eon_qjs.c "$Q/eon_qjs.c"
+    cmp -s port/ps3/quickjs/dom.js "$Q/dom.js" || cp port/ps3/quickjs/dom.js "$Q/dom.js"
+  fi
 fi
 
 # EONSURF_VERBOSE=1: log detallado de NetSurf por stderr (TTY de la PS3 / RPCS3), como si se pasara -v

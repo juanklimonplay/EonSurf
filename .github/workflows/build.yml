@@ -94,6 +94,9 @@ jobs:
           PREFIX=/usr/local/ps3dev/portlibs/ppu
           WORK_DIR="port/work"
 
+          echo "==> Motor JavaScript QuickJS-ng..."
+          bash port/ps3/quickjs/build-lib.sh "$WORK_DIR"
+
           echo "==> Descargando y parchando netsurf-all-3.11..."
           bash port/fetch.sh "$WORK_DIR"
           cd "${WORK_DIR}/netsurf-all-3.11"

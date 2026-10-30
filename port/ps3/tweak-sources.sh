@@ -172,3 +172,16 @@ grep -n "enable_javascript" netsurf/desktop/options.h
 
 # Mejoras de JavaScript (redibujo en vivo y APIs que faltan)
 python3 ../../ps3/patch-js.py
+
+# Motor JavaScript: QuickJS-ng (por defecto) o el Duktape de NetSurf (EONSURF_JS=duktape)
+if [ "${EONSURF_JS:-quickjs}" = quickjs ]; then
+  Q=netsurf/content/handlers/javascript/quickjs
+  mkdir -p $Q
+  cp ../../ps3/quickjs/eon_qjs.c ../../ps3/quickjs/dom.js $Q/
+  cp ../../ps3/quickjs/Makefile.netsurf $Q/Makefile
+  sed -i 's#^ifeq ($(NETSURF_USE_DUKTAPE),YES)#ifeq ($(NETSURF_USE_QUICKJS),YES)\ninclude content/handlers/javascript/quickjs/Makefile\nelse ifeq ($(NETSURF_USE_DUKTAPE),YES)#' netsurf/content/handlers/javascript/Makefile
+  printf 'override NETSURF_USE_QUICKJS := YES\noverride NETSURF_USE_DUKTAPE := NO\n' >> netsurf/Makefile.config
+  sed -i 's/-Wl,--start-group -lrsx /-Wl,--start-group -lqjs -lrsx /' netsurf/frontends/framebuffer/Makefile
+  grep -n "QUICKJS" netsurf/content/handlers/javascript/Makefile
+  grep -n "lqjs" netsurf/frontends/framebuffer/Makefile
+fi
