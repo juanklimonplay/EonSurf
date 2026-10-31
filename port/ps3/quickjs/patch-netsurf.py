@@ -145,3 +145,81 @@ patch(HTML + 'html.c', '''	ms_interval = (ms_after - ms_before) * 3;''', '''	NSL
 	      (unsigned)(ms_after - ms_before));
 	ms_interval = (ms_after - ms_before) * 3;''')
 print('EonSurf: medicion de layout')
+
+
+# z-index: NetSurf pinta los hijos en el orden del documento. Se reemplaza el
+# cuerpo de html_redraw_box_children: primero el flujo normal y los flotantes,
+# despues los hijos posicionados ordenados por z-index (estable: a igual z,
+# orden del documento). Aproximado: solo entre hermanos del mismo padre.
+old_body = """	struct box *c;
+
+	for (c = box->children; c; c = c->next) {
+
+		if (c->type != BOX_FLOAT_LEFT && c->type != BOX_FLOAT_RIGHT)
+			if (!html_redraw_box(html, c,
+					x_parent + box->x -
+					scrollbar_get_offset(box->scroll_x),
+					y_parent + box->y -
+					scrollbar_get_offset(box->scroll_y),
+					clip, scale, current_background_color,
+					ctx))
+				return false;
+	}
+	for (c = box->float_children; c; c = c->next_float)
+		if (!html_redraw_box(html, c,
+				x_parent + box->x -
+				scrollbar_get_offset(box->scroll_x),
+				y_parent + box->y -
+				scrollbar_get_offset(box->scroll_y),
+				clip, scale, current_background_color,
+				ctx))
+			return false;
+
+	return true;
+}"""
+new_body = """	struct box *c;
+	struct box *eon_stack[64];
+	int32_t eon_z[64];
+	int eon_n = 0, eon_i;
+	int bx = x_parent + box->x - scrollbar_get_offset(box->scroll_x);
+	int by = y_parent + box->y - scrollbar_get_offset(box->scroll_y);
+
+	for (c = box->children; c; c = c->next) {
+		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT)
+			continue;
+		/* EonSurf: los posicionados se guardan para pintarlos encima */
+		if (c->style != NULL && eon_n < 64 &&
+		    css_computed_position(c->style) != CSS_POSITION_STATIC) {
+			int32_t z = 0;
+			if (css_computed_z_index(c->style, &z) != CSS_Z_INDEX_SET)
+				z = 0;
+			for (eon_i = eon_n; eon_i > 0 && eon_z[eon_i - 1] > z; eon_i--) {
+				eon_stack[eon_i] = eon_stack[eon_i - 1];
+				eon_z[eon_i] = eon_z[eon_i - 1];
+			}
+			eon_stack[eon_i] = c;
+			eon_z[eon_i] = z;
+			eon_n++;
+			continue;
+		}
+		if (!html_redraw_box(html, c, bx, by, clip, scale,
+				current_background_color, ctx))
+			return false;
+	}
+	for (c = box->float_children; c; c = c->next_float)
+		if (!html_redraw_box(html, c, bx, by, clip, scale,
+				current_background_color, ctx))
+			return false;
+
+	/* EonSurf: posicionados encima, de menor a mayor z-index */
+	for (eon_i = 0; eon_i < eon_n; eon_i++)
+		if (!html_redraw_box(html, eon_stack[eon_i], bx, by, clip, scale,
+				current_background_color, ctx))
+			return false;
+
+	return true;
+}"""
+_r = open(HTML + 'redraw.c').read()
+assert _r.count(old_body) == 1, _r.count(old_body)
+open(HTML + 'redraw.c', 'w').write(_r.replace(old_body, new_body))
+print('EonSurf: z-index en el pintado')

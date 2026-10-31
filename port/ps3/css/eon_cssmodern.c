@@ -325,6 +325,7 @@ typedef struct {
 	char top[24], left[24], height[24];
 	char tx[48], ty[48];
 	bool has_translate;
+	bool has_mask; /* mask-image: url(...) -> se dibuja como fondo */
 } eon_blockinfo;
 
 static void eon_block_scan(const char *p, const char *end, eon_blockinfo *bi)
@@ -349,6 +350,10 @@ static void eon_block_scan(const char *p, const char *end, eon_blockinfo *bi)
 			else if (eon_span_is(prop, "top")) snprintf(bi->top, sizeof(bi->top), "%.*s", (int)val.n, val.s);
 			else if (eon_span_is(prop, "left")) snprintf(bi->left, sizeof(bi->left), "%.*s", (int)val.n, val.s);
 			else if (eon_span_is(prop, "height")) snprintf(bi->height, sizeof(bi->height), "%.*s", (int)val.n, val.s);
+			else if ((eon_span_is(prop, "mask-image") || eon_span_is(prop, "-webkit-mask-image") ||
+				  eon_span_is(prop, "mask") || eon_span_is(prop, "-webkit-mask")) &&
+				 eon_memmem(val.s, val.n, "url(", 4) != NULL)
+				bi->has_mask = true;
 			else if (eon_span_is(prop, "transform"))
 				bi->has_translate = eon_parse_translate(val, bi->tx, sizeof(bi->tx), bi->ty, sizeof(bi->ty));
 		}
@@ -449,7 +454,24 @@ static void eon_modern_block(eon_out *o, eon_out *extra, eon_span sel, const cha
 			}
 		}
 
-		if (eon_span_is(prop, "transform") && bi.has_translate) {
+		if ((eon_span_is(prop, "mask-image") || eon_span_is(prop, "-webkit-mask-image") ||
+		     eon_span_is(prop, "mask") || eon_span_is(prop, "-webkit-mask")) &&
+		    eon_memmem(val.s, val.n, "url(", 4) != NULL) {
+			/* NetSurf no tiene mascaras: el icono de la mascara se usa como fondo
+			 * (si no, se ve un cuadrado del color de fondo) */
+			const char *u = eon_memmem(val.s, val.n, "url(", 4), *ue = u;
+			int d = 0;
+			for (; ue < val.s + val.n; ue++) {
+				if (*ue == '(') d++;
+				else if (*ue == ')' && --d == 0) { ue++; break; }
+			}
+			eon_put(o, "background-image:", 17);
+			eon_put(o, u, (size_t)(ue - u));
+			eon_putz(o, ";background-repeat:no-repeat;background-position:center;background-size:contain;");
+		} else if (bi.has_mask && (eon_span_is(prop, "background-color") || eon_span_is(prop, "background"))) {
+			/* el color de fondo era el "color del icono": se saca */
+			eon_putz(o, "background-color:transparent;");
+		} else if (eon_span_is(prop, "transform") && bi.has_translate) {
 			/* se deja el original (no molesta) y se agrega el equivalente */
 			eon_put(o, ds, (size_t)(de - ds));
 			eon_put(o, ";", 1);
@@ -667,7 +689,8 @@ static char *eon_css_modernize(const char *css, size_t len, size_t *outlen)
 	if (eon_memmem(css, len, "grid", 4) == NULL && eon_memmem(css, len, "inset", 5) == NULL &&
 	    eon_memmem(css, len, "gap", 3) == NULL && eon_memmem(css, len, "place-", 6) == NULL &&
 	    eon_memmem(css, len, "translate", 9) == NULL && eon_memmem(css, len, "sticky", 6) == NULL &&
-	    eon_memmem(css, len, "opacity", 7) == NULL && eon_memmem(css, len, "scale", 5) == NULL) {
+	    eon_memmem(css, len, "opacity", 7) == NULL && eon_memmem(css, len, "scale", 5) == NULL &&
+	    eon_memmem(css, len, "mask", 4) == NULL) {
 		return NULL;
 	}
 	eon_modern_rules(&o, css, css + len, false);
