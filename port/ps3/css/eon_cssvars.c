@@ -292,6 +292,7 @@ static char *eon_css_take_vars(const void *sheet, size_t *len)
 		return NULL;
 	}
 	eon_sheet_serial++;
+	NSLOG(netsurf, INFO, "EonSurf: css vars %u bytes", (unsigned)b->len);
 	eon_collect_vars(b->data, b->len, eon_sheet_serial);
 	if (strstr(b->data, "var(") == NULL && strstr(b->data, "VAR(") == NULL) {
 		/* nada que reemplazar: devolver el mismo texto */

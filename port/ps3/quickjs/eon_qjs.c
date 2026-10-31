@@ -147,7 +147,14 @@ static void eon_rejection(JSContext *ctx, JSValueConst promise, JSValueConst rea
 	(void)promise; (void)opaque;
 	if (is_handled) return;
 	msg = JS_ToCString(ctx, reason);
-	NSLOG(netsurf, WARNING, "JS unhandled rejection: %s", msg ? msg : "?");
+	{
+		/* con la pila: sin ella no se sabe que script fallo */
+		JSValue st = JS_IsError(reason) ? JS_GetPropertyStr(ctx, reason, "stack") : JS_UNDEFINED;
+		const char *sts = JS_IsString(st) ? JS_ToCString(ctx, st) : NULL;
+		NSLOG(netsurf, WARNING, "JS unhandled rejection: %s %.300s", msg ? msg : "?", sts ? sts : "");
+		if (sts) JS_FreeCString(ctx, sts);
+		JS_FreeValue(ctx, st);
+	}
 	if (msg) JS_FreeCString(ctx, msg);
 }
 
