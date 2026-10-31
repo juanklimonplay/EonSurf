@@ -21,13 +21,12 @@ def patch(path, old, new):
 
 patch(NS + 'content/fetchers/curl.c',
       '\tcode = curl_easy_setopt(fetch_blank_curl, CURLOPT_SSL_CTX_FUNCTION, NULL);',
-      '''\t/* EonSurf: sesiones TLS y DNS compartidas por todas las descargas */
+      '''\t/* EonSurf: cache de DNS compartida por todas las descargas */
 \t{
 \t\tstatic CURLSH *eon_share = NULL;
 \t\tif (eon_share == NULL) {
 \t\t\teon_share = curl_share_init();
 \t\t\tif (eon_share != NULL) {
-\t\t\t\tcurl_share_setopt(eon_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
 \t\t\t\tcurl_share_setopt(eon_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
 \t\t\t}
 \t\t}
