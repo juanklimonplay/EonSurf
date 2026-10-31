@@ -3029,6 +3029,18 @@ function nthMatch(expr, idx) {
   return (idx - b) / a >= 0 && (idx - b) % a === 0;
 }
 
+function classHas(cls, want) {
+  var i = 0, e;
+  while ((i = cls.indexOf(want, i)) >= 0) {
+    e = i + want.length;
+    /* separadores: espacio, tab, salto de linea (codigos <= 32) */
+    if ((i === 0 || cls.charCodeAt(i - 1) <= 32) &&
+        (e === cls.length || cls.charCodeAt(e) <= 32)) return true;
+    i = e;
+  }
+  return false;
+}
+
 function matchSimple(e, parts) {
   for (var i = 0; i < parts.length; i++) {
     var p = parts[i], v;
@@ -3037,8 +3049,10 @@ function matchSimple(e, parts) {
     } else if (p.t === 'id') {
       if (ns.getAttr(e, 'id') !== p.v) return false;
     } else if (p.t === 'cls') {
-      var cls = ' ' + (ns.getAttr(e, 'class') || '').replace(/\s+/g, ' ') + ' ';
-      if (cls.indexOf(' ' + p.v + ' ') < 0) return false;
+      /* sin regex: esto corre por cada elemento en querySelectorAll */
+      var cls = ns.getAttr(e, 'class');
+      if (!cls || cls.indexOf(p.v) < 0) return false;
+      if (cls !== p.v && !classHas(cls, p.v)) return false;
     } else if (p.t === 'attr') {
       v = ns.getAttr(e, p.n);
       if (v === null) return false;
@@ -3053,11 +3067,16 @@ function matchSimple(e, parts) {
       if (p.op === '|=' && v !== want && v.indexOf(want + '-') !== 0) return false;
     } else if (p.t === 'pseudo') {
       var par = ns.parent(e);
-      var sib = par ? elementSiblings(e) : [e];
-      var idx = sib.indexOf(e);
-      var tsib = typeSiblings(e);
-      var tidx = tsib.indexOf(e);
-      var n = p.n;
+      var n = p.n, sib, idx, tsib, tidx;
+      /* hermanos solo para las pseudo que los usan (antes se calculaban
+       * siempre, tambien en :not() y :is(), y eso hacia lento el qsa) */
+      if (n.indexOf('child') >= 0) {
+        sib = par ? elementSiblings(e) : [e];
+        idx = sib.indexOf(e);
+      } else if (n.indexOf('of-type') >= 0) {
+        tsib = typeSiblings(e);
+        tidx = tsib.indexOf(e);
+      }
       if (n === 'first-child') { if (idx !== 0) return false; }
       else if (n === 'last-child') { if (idx !== sib.length - 1) return false; }
       else if (n === 'only-child') { if (sib.length !== 1) return false; }
@@ -3146,9 +3165,22 @@ function matchesSelector(e, sel) {
 function qsaCandidates(root, sel) {
   var groups;
   try { groups = parseSelector(sel); } catch (_) { return null; }
+  /* ":scope > x" (en todos los grupos): solo los hijos directos */
+  var onlyKids = groups.length > 0;
+  for (var g = 0; g < groups.length && onlyKids; g++) {
+    var st = groups[g];
+    onlyKids = st.length === 2 && st[1].comb === '>' && st[0].simple.length === 1 &&
+      st[0].simple[0].t === 'pseudo' && st[0].simple[0].n === 'scope';
+  }
+  if (onlyKids) {
+    var kids = ns.children(root), ek = [];
+    for (var j = 0; j < kids.length; j++) if (ns.type(kids[j]) === ELEMENT_NODE) ek.push(kids[j]);
+    return ek;
+  }
   if (groups.length !== 1 || !groups[0].length) return byTagAll(root, '*');
-  var last = groups[0][groups[0].length - 1].simple, tag = null;
+  var last = groups[0][groups[0].length - 1].simple, tag = null, cls = null;
   for (var i = 0; i < last.length; i++) {
+    if (last[i].t === 'cls' && cls === null) cls = last[i].v;
     if (last[i].t === 'id') {
       var el = ns.byId(last[i].v);
       if (!el) return [];
@@ -3158,18 +3190,29 @@ function qsaCandidates(root, sel) {
     }
     if (last[i].t === 'tag') tag = last[i].v;
   }
+  if (cls !== null) {
+    var rt = ns.type(root);
+    if (rt === DOCUMENT_NODE || rt === ELEMENT_NODE) return ns.byClass(root, cls);
+  }
   return byTagAll(root, tag ? tag.toLowerCase() : '*');
 }
 
 function qsa(root, sel, one) {
+  var t0 = Date.now();
   var all = qsaCandidates(root, sel) || [], out = [];
   for (var i = 0; i < all.length; i++) {
     if (matchesSelector(all[i], sel)) {
-      if (one) return all[i];
+      if (one) { qsaSlow(t0, sel, all.length); return all[i]; }
       out.push(all[i]);
     }
   }
+  qsaSlow(t0, sel, all.length);
   return one ? null : out;
+}
+/* avisar los querySelector lentos (para saber que optimizar) */
+function qsaSlow(t0, sel, n) {
+  var ms = Date.now() - t0;
+  if (ms > 300) log('qsa lento ' + ms + ' ms, ' + n + ' candidatos: ' + String(sel).slice(0, 200));
 }
 
 /* ---------------------------------------------------------------- URL */

@@ -66,6 +66,7 @@ struct jsheap {
 	uint64_t exec_start; /* ms; 0 = no esta corriendo JS */
 	uint64_t last_warn; /* ultimo aviso de "sigue corriendo" */
 	char what[96]; /* que se esta corriendo, para los avisos */
+	JSContext *cur; /* contexto que esta corriendo (para la pila del aviso) */
 };
 
 typedef struct eon_timer {
@@ -129,6 +130,18 @@ static int eon_interrupt(JSRuntime *rt, void *opaque)
 		heap->last_warn = now;
 		NSLOG(netsurf, WARNING, "EonSurf: JS still running %u ms: %s",
 		      (unsigned)(now - heap->exec_start), heap->what);
+		if (heap->cur != NULL) {
+			/* un Error nuevo trae la pila de lo que esta corriendo */
+			JSValue e = JS_NewError(heap->cur);
+			JSValue st = JS_GetPropertyStr(heap->cur, e, "stack");
+			const char *s = JS_ToCString(heap->cur, st);
+			if (s != NULL) {
+				NSLOG(netsurf, WARNING, "EonSurf: JS stack: %.700s", s);
+				JS_FreeCString(heap->cur, s);
+			}
+			JS_FreeValue(heap->cur, st);
+			JS_FreeValue(heap->cur, e);
+		}
 	}
 	return now > heap->exec_start + EON_EXEC_TIMEOUT_MS;
 }
@@ -169,6 +182,14 @@ static void eon_rejection(JSContext *ctx, JSValueConst promise, JSValueConst rea
 		if (sts) JS_FreeCString(ctx, sts);
 		JS_FreeValue(ctx, st);
 	}
+	if (msg && strstr(msg, "out of memory") != NULL) {
+		/* cuanto ocupa el heap de JS cuando se acaba (para ajustar el limite) */
+		JSMemoryUsage mu;
+		JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &mu);
+		NSLOG(netsurf, WARNING, "EonSurf: JS heap %lld KB, %lld objetos, %lld strings (%lld KB)",
+		      (long long)(mu.memory_used_size / 1024), (long long)mu.obj_count,
+		      (long long)mu.str_count, (long long)(mu.str_size / 1024));
+	}
 	if (msg) JS_FreeCString(ctx, msg);
 }
 
@@ -193,6 +214,7 @@ static bool eon_enter(struct jsthread *t)
 	t->in_use++;
 	t->heap->exec_start = eon_now_ms();
 	t->heap->last_warn = 0;
+	t->heap->cur = t->ctx;
 	snprintf(t->heap->what, sizeof(t->heap->what), "callback");
 	return true;
 }
@@ -690,6 +712,59 @@ static JSValue ns_by_tag(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 		JS_SetPropertyUint32(ctx, arr, i, eon_wrap_take(ctx, c));
 	}
 	dom_nodelist_unref(list);
+	return arr;
+}
+
+/* elementos con una clase, recorriendo el arbol en C: en JS eran varias
+ * llamadas por elemento y un ".g-recaptcha" en reddit (12000 nodos) tardaba 15 s */
+static JSValue ns_by_class(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	JSValue arr = JS_NewArray(ctx);
+	const char *cls;
+	lwc_string *name = NULL;
+	dom_node *n = NULL, *next = NULL;
+	uint32_t count = 0;
+	NODE_ARG(0, root);
+	(void)this_val; (void)argc;
+	cls = JS_ToCString(ctx, argv[1]);
+	if (cls == NULL) return arr;
+	if (lwc_intern_string(cls, strlen(cls), &name) != lwc_error_ok) {
+		JS_FreeCString(ctx, cls);
+		return arr;
+	}
+	JS_FreeCString(ctx, cls);
+	dom_node_get_first_child(root, &n);
+	while (n != NULL) {
+		dom_node_type type;
+		dom_node_get_node_type(n, &type);
+		if (type == DOM_ELEMENT_NODE) {
+			bool match = false;
+			if (dom_element_has_class((dom_element *)n, name, &match) ==
+					DOM_NO_ERR && match) {
+				dom_node_ref(n);
+				JS_SetPropertyUint32(ctx, arr, count++, eon_wrap_take(ctx, n));
+			}
+		}
+		/* siguiente en orden de documento: hijo, hermano o hermano de un ancestro */
+		next = NULL;
+		dom_node_get_first_child(n, &next);
+		while (next == NULL && n != NULL) {
+			dom_node *p = NULL;
+			if (n == root) break;
+			dom_node_get_next_sibling(n, &next);
+			if (next != NULL) break;
+			dom_node_get_parent_node(n, &p);
+			dom_node_unref(n);
+			n = p;
+			if (n == root) {
+				dom_node_unref(n);
+				n = NULL;
+			}
+		}
+		if (n != NULL) dom_node_unref(n);
+		n = next;
+	}
+	lwc_string_unref(name);
 	return arr;
 }
 
@@ -1800,6 +1875,7 @@ static const JSCFunctionListEntry eon_ns_funcs[] = {
 	JS_CFUNC_DEF("attrNames", 1, ns_attr_names),
 	JS_CFUNC_DEF("byId", 1, ns_by_id),
 	JS_CFUNC_DEF("byTag", 2, ns_by_tag),
+	JS_CFUNC_DEF("byClass", 2, ns_by_class),
 	JS_CFUNC_DEF("setInnerHTML", 2, ns_set_inner_html),
 	JS_CFUNC_DEF("formGet", 2, ns_form_get),
 	JS_CFUNC_DEF("formSet", 3, ns_form_set),
@@ -2047,7 +2123,7 @@ bool js_fire_event(jsthread *thread, const char *type, struct dom_document *doc,
 	if (!eon_enter(t)) return false;
 	args[0] = JS_NewString(t->ctx, type);
 	args[1] = eon_wrap(t->ctx, target);
-	snprintf(t->heap->what, sizeof(t->heap->what), "dispatch event");
+	snprintf(t->heap->what, sizeof(t->heap->what), "dispatch event %s", type);
 	r = eon_call_ns(t, "onFire", 2, args);
 	prevented = JS_ToBool(t->ctx, r);
 	JS_FreeValue(t->ctx, r);
