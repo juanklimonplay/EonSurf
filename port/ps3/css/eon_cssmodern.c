@@ -370,10 +370,27 @@ static void eon_emit_translate(eon_out *o, const eon_blockinfo *bi, eon_span imp
 	}
 	if (cy) {
 		/* con alto conocido se centra; si no, top/bottom 0 lo estiraria */
-		if (bi->height[0] && strcasecmp(bi->height, "auto") != 0)
-			eon_putz(o, "top:0;bottom:0;margin-top:auto;margin-bottom:auto;");
-		else
-			eon_putz(o, "top:10%;");
+		/* tecnica clasica: top 50% y margen negativo de medio alto
+		 * (NetSurf no centra con margenes automaticos verticales) */
+		char *unit = NULL;
+		double h = bi->height[0] ? strtod(bi->height, &unit) : 0;
+		if (h > 0 && unit != NULL && (strncasecmp(unit, "px", 2) == 0 ||
+		    strncasecmp(unit, "em", 2) == 0 || strncasecmp(unit, "rem", 3) == 0 ||
+		    strncasecmp(unit, "vh", 2) == 0 || *unit == '%')) {
+			/* En NetSurf "fixed" se mide contra toda la pagina (y vh tampoco
+			 * sirve): se usa la mitad de la pantalla de la PS3 en pixeles,
+			 * 668 px visibles debajo de la barra. */
+			if (strcasecmp(bi->position, "fixed") == 0 && strncasecmp(unit, "px", 2) == 0) {
+				double top = 334.0 - h / 2;
+				snprintf(buf, sizeof(buf), "top:%.0fpx;", top > 0 ? top : 0);
+			} else {
+				snprintf(buf, sizeof(buf), "top:50%%;margin-top:-%.3f%s;", h / 2, unit);
+			}
+			eon_putz(o, buf);
+		} else {
+			/* sin alto conocido: cerca de arriba de la pantalla */
+			eon_putz(o, strcasecmp(bi->position, "fixed") == 0 ? "top:60px;" : "top:10%;");
+		}
 	}
 	if (abs) {
 		/* ya posicionado: correrlo con margenes */
@@ -440,7 +457,7 @@ static void eon_modern_block(eon_out *o, eon_out *extra, eon_span sel, const cha
 		} else if (eon_span_is(prop, "left") && eon_center_x(&bi)) {
 			eon_putz(o, "left:0;");
 		} else if (eon_span_is(prop, "top") && eon_center_y(&bi)) {
-			eon_putz(o, "top:0;");
+			/* lo pone eon_emit_translate */
 		} else if (eon_span_is(prop, "position") && eon_span_is(val, "sticky")) {
 			/* sticky: lo mas parecido sin scroll ligado es relative */
 			eon_decl(o, "position", (eon_span){ "relative", 8 }, imp);
