@@ -146,6 +146,13 @@ prueba('ReadableStream', function () {
 	}); })();
 	return typeof TransformStream === 'function' && typeof WritableStream === 'function';
 });
+prueba('iterar URLSearchParams / FormData / Headers', function () {
+	var p = new URLSearchParams('a=1&b=2'), out = [];
+	for (var e of p) out.push(e[0] + e[1]);
+	var f = new FormData(); f.append('x', '9'); for (var g of f) out.push(g[0] + g[1]);
+	var h = new Headers({ 'X-A': 'q' }); for (var k of h) out.push(k[0] + k[1]);
+	return out.join() === 'a1,b2,x9,x-aq';
+});
 setTimeout(function () {
 	var ok = document.querySelectorAll('#lista li.ok').length, no = document.querySelectorAll('#lista li.no');
 	var mal = [];

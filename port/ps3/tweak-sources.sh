@@ -193,6 +193,8 @@ cat >> netsurf/resources/default.css <<'CSS'
 
 /* EonSurf: reglas HTML5 que faltan */
 [hidden], template, slot, dialog:not([open]), noscript { display: none; }
+[eon-noslot] > :not(eon-shadow-root) { display: none !important; }
+[popover]:not([eon-popover-open]) { display: none; }
 details:not([open]) > :not(summary) { display: none; }
 main, article, aside, nav, section, header, footer, figure, figcaption, hgroup, search { display: block; }
 dialog[open] { display: block; position: absolute; left: 0; right: 0; margin: auto; border: solid; padding: 1em; background: white; color: black; }

@@ -64,6 +64,8 @@ struct jsheap {
 	unsigned int live_threads;
 	bool pending_destroy;
 	uint64_t exec_start; /* ms; 0 = no esta corriendo JS */
+	uint64_t last_warn; /* ultimo aviso de "sigue corriendo" */
+	char what[96]; /* que se esta corriendo, para los avisos */
 };
 
 typedef struct eon_timer {
@@ -116,9 +118,19 @@ static uint64_t eon_now_ms(void)
 static int eon_interrupt(JSRuntime *rt, void *opaque)
 {
 	jsheap *heap = opaque;
+	uint64_t now;
 	(void)rt;
-	return heap->exec_start != 0 &&
-		eon_now_ms() > heap->exec_start + EON_EXEC_TIMEOUT_MS;
+	if (heap->exec_start == 0) {
+		return 0;
+	}
+	now = eon_now_ms();
+	/* aviso cada 5 s: para saber que script tiene trabada la pagina */
+	if (now > heap->exec_start + 5000 && now > heap->last_warn + 5000) {
+		heap->last_warn = now;
+		NSLOG(netsurf, WARNING, "EonSurf: JS still running %u ms: %s",
+		      (unsigned)(now - heap->exec_start), heap->what);
+	}
+	return now > heap->exec_start + EON_EXEC_TIMEOUT_MS;
 }
 
 static struct jsthread *eon_thread(JSContext *ctx)
@@ -133,7 +145,7 @@ static void eon_log_exception(JSContext *ctx, const char *where)
 	JSValue stack = JS_IsError(e) ?
 		JS_GetPropertyStr(ctx, e, "stack") : JS_UNDEFINED;
 	const char *st = JS_IsUndefined(stack) ? NULL : JS_ToCString(ctx, stack);
-	NSLOG(netsurf, WARNING, "JS error in %s: %s %s", where,
+	NSLOG(netsurf, WARNING, "JS error in %s: %.600s %.800s", where,
 	      msg ? msg : "?", st ? st : "");
 	if (st) JS_FreeCString(ctx, st);
 	JS_FreeValue(ctx, stack);
@@ -153,7 +165,7 @@ static void eon_rejection(JSContext *ctx, JSValueConst promise, JSValueConst rea
 		/* con la pila: sin ella no se sabe que script fallo */
 		JSValue st = JS_IsError(reason) ? JS_GetPropertyStr(ctx, reason, "stack") : JS_UNDEFINED;
 		const char *sts = JS_IsString(st) ? JS_ToCString(ctx, st) : NULL;
-		NSLOG(netsurf, WARNING, "JS unhandled rejection: %s %.300s", msg ? msg : "?", sts ? sts : "");
+		NSLOG(netsurf, WARNING, "JS unhandled rejection: %.600s %.300s", msg ? msg : "?", sts ? sts : "");
 		if (sts) JS_FreeCString(ctx, sts);
 		JS_FreeValue(ctx, st);
 	}
@@ -180,6 +192,8 @@ static bool eon_enter(struct jsthread *t)
 	}
 	t->in_use++;
 	t->heap->exec_start = eon_now_ms();
+	t->heap->last_warn = 0;
+	snprintf(t->heap->what, sizeof(t->heap->what), "callback");
 	return true;
 }
 
@@ -917,7 +931,7 @@ static JSValue ns_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	if (argc < 1) return JS_UNDEFINED;
 	s = JS_ToCString(ctx, argv[0]);
 	if (s != NULL) {
-		NSLOG(netsurf, INFO, "console: %s", s);
+		NSLOG(netsurf, INFO, "console: %.1500s", s); /* recortado: una pila enorme colgaba el registro */
 		JS_FreeCString(ctx, s);
 	}
 	return JS_UNDEFINED;
@@ -940,6 +954,7 @@ static void eon_timer_fire(void *p)
 	if (eon_enter(t)) {
 		uint64_t t0 = eon_now_ms();
 		arg = JS_NewInt32(t->ctx, tm->id);
+		snprintf(t->heap->what, sizeof(t->heap->what), "timer");
 		JS_FreeValue(t->ctx, eon_call_ns(t, "onTimer", 1, &arg));
 		eon_leave(t);
 		if (eon_now_ms() - t0 > 50)
@@ -1015,6 +1030,7 @@ static void eon_dom_event(struct dom_event *evt, void *pw)
 	dom_event_get_type(evt, &type);
 	args[0] = eon_wrap(t->ctx, (dom_node *)target);
 	args[1] = eon_ds_to_js(t->ctx, type);
+	snprintf(t->heap->what, sizeof(t->heap->what), "event listener");
 	r = eon_call_ns(t, "onEvent", 2, args);
 	if (JS_ToBool(t->ctx, r)) {
 		dom_event_prevent_default(evt);
@@ -1096,6 +1112,7 @@ static void eon_http_done(struct jsthread *t, int32_t id, int status,
 	args[1] = JS_NewInt32(t->ctx, status);
 	args[2] = JS_NewStringLen(t->ctx, data != NULL ? (const char *)data : "", data != NULL ? len : 0);
 	args[3] = JS_NewString(t->ctx, type != NULL ? type : "");
+	snprintf(t->heap->what, sizeof(t->heap->what), "XHR/fetch callback");
 	JS_FreeValue(t->ctx, eon_call_ns(t, "onHttp", 4, args));
 	JS_FreeValue(t->ctx, args[2]);
 	JS_FreeValue(t->ctx, args[3]);
@@ -1981,6 +1998,7 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	memcpy(buf, txt, txtlen);
 	buf[txtlen] = '\0';
 	NSLOG(netsurf, INFO, "EonSurf: js_exec %s (%u bytes)", name != NULL ? name : "script", (unsigned)txtlen);
+	snprintf(t->heap->what, sizeof(t->heap->what), "script %.80s", name != NULL ? name : "inline");
 	/* document.currentScript: dom.js sabe que hay un script corriendo */
 	JS_SetPropertyStr(t->ctx, t->ns, "executing", JS_NewBool(t->ctx, 1));
 	if (name != NULL && strcmp(name, "importmap:") == 0) {
@@ -2029,6 +2047,7 @@ bool js_fire_event(jsthread *thread, const char *type, struct dom_document *doc,
 	if (!eon_enter(t)) return false;
 	args[0] = JS_NewString(t->ctx, type);
 	args[1] = eon_wrap(t->ctx, target);
+	snprintf(t->heap->what, sizeof(t->heap->what), "dispatch event");
 	r = eon_call_ns(t, "onFire", 2, args);
 	prevented = JS_ToBool(t->ctx, r);
 	JS_FreeValue(t->ctx, r);

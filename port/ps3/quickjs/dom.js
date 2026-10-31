@@ -1359,6 +1359,8 @@ class Element extends Node {
     sr.delegatesFocus = !!(init && init.delegatesFocus);
     sr.adoptedStyleSheets = [];
     shadowRoots.set(this, sr);
+    shadowHosts.push(this);
+    shadowCheckSoon();
     return sr;
   }
   get shadowRoot() {
@@ -3425,7 +3427,7 @@ class URLSearchParams {
   }
   entries() {
     var l = this._list, i = 0;
-    return { next: function () { return i < l.length ? { value: [l[i][0], l[i][1]], done: false } : { value: undefined, done: true }; },
+    return { next: function () { if (i >= l.length) return { value: undefined, done: true }; var e = l[i++]; return { value: [e[0], e[1]], done: false }; },
              [Symbol.iterator]: function () { return this; } };
   }
   keys() {
@@ -3542,8 +3544,25 @@ function currentHref() {
 }
 
 function navigateTo(url) {
-  var abs;
-  try { abs = resolveURL(String(url), currentHref()); } catch (_) { abs = String(url); }
+  var abs, cur = locationObj ? locationObj._current() : currentHref();
+  try { abs = resolveURL(String(url), cur); } catch (_) { abs = String(url); }
+  /* solo cambia el #fragmento: no se recarga, se avisa con hashchange */
+  var base = function (u) { var i = u.indexOf('#'); return i < 0 ? u : u.slice(0, i); };
+  if (base(abs) === base(cur) && abs.indexOf('#') >= 0) {
+    if (locationObj) locationObj._override = abs;
+    if (abs !== cur) {
+      setTimeout(function () {
+        try {
+          var ev = new Event('hashchange');
+          ev.oldURL = cur; ev.newURL = abs;
+          G.dispatchEvent(ev);
+        } catch (_) {}
+      }, 0);
+    }
+    return;
+  }
+  /* al registro con la pila: para saber que script se lleva la pagina */
+  try { ns.log('EonSurf navigate: ' + abs.slice(0, 200) + ' ' + String(new Error().stack).slice(0, 400)); } catch (_) {}
   try { ns.navigate(abs); } catch (_) {}
   if (locationObj) locationObj._override = abs;
 }
@@ -3575,7 +3594,10 @@ class Location {
   get password() { var u = this._url(); return u ? u.password : ''; }
   assign(u) { navigateTo(u); }
   replace(u) { navigateTo(u); }
-  reload() { try { ns.history(0); } catch (_) {} }
+  reload() {
+    try { ns.log('EonSurf reload: ' + String(new Error().stack).slice(0, 400)); } catch (_) {}
+    try { ns.history(0); } catch (_) {}
+  }
   toString() { return this._current(); }
   valueOf() { return this._current(); }
 }
@@ -3850,7 +3872,9 @@ class TextEncoder {
   get encoding() { return 'utf-8'; }
   encode(str) {
     str = String(str === undefined ? '' : str);
-    var out = [];
+    /* buffer de bytes y no un Array de numeros: con textos grandes (reddit)
+     * el Array se quedaba sin memoria */
+    var out = new Uint8Array(str.length * 3), n = 0;
     for (var i = 0; i < str.length; i++) {
       var c = str.charCodeAt(i);
       if (c >= 0xD800 && c <= 0xDBFF && i + 1 < str.length) {
@@ -3860,12 +3884,12 @@ class TextEncoder {
           i++;
         }
       }
-      if (c < 0x80) out.push(c);
-      else if (c < 0x800) out.push(0xC0 | (c >> 6), 0x80 | (c & 63));
-      else if (c < 0x10000) out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-      else out.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      if (c < 0x80) out[n++] = c;
+      else if (c < 0x800) { out[n++] = 0xC0 | (c >> 6); out[n++] = 0x80 | (c & 63); }
+      else if (c < 0x10000) { out[n++] = 0xE0 | (c >> 12); out[n++] = 0x80 | ((c >> 6) & 63); out[n++] = 0x80 | (c & 63); }
+      else { out[n++] = 0xF0 | (c >> 18); out[n++] = 0x80 | ((c >> 12) & 63); out[n++] = 0x80 | ((c >> 6) & 63); out[n++] = 0x80 | (c & 63); }
     }
-    return new Uint8Array(out);
+    return out.slice(0, n);
   }
   encodeInto(str, dest) {
     var u = this.encode(str);
@@ -4275,7 +4299,7 @@ class FormData {
   }
   entries() {
     var l = this._list, i = 0;
-    return { next: function () { return i < l.length ? { value: [l[i][0], l[i][1]], done: false } : { value: undefined, done: true }; },
+    return { next: function () { if (i >= l.length) return { value: undefined, done: true }; var e = l[i++]; return { value: [e[0], e[1]], done: false }; },
              [Symbol.iterator]: function () { return this; } };
   }
   keys() {
@@ -4791,6 +4815,42 @@ defineTag(ResizeObserver.prototype, 'ResizeObserver');
  * el parser y las inserciones llaman connectedCallback y compania. */
 
 var shadowRoots = new WeakMap();
+/* Shadow DOM aplanado: si la raiz no tiene <slot>, el contenido light del
+ * anfitrion no se ve (como en un navegador; si no, GitHub mostraba "last week"
+ * y tambien "Oct 24, 2026"). Los textos sueltos se envuelven en <eon-light>
+ * para poder esconderlos con CSS: [eon-noslot] > :not(eon-shadow-root). */
+var shadowHosts = []; /* anfitriones nuevos, se revisan una sola vez */
+var shadowCheckPending = false;
+function shadowCheck() {
+  shadowCheckPending = false;
+  var list = shadowHosts;
+  shadowHosts = [];
+  for (var i = 0; i < list.length; i++) {
+    var host = list[i], sr = shadowRoots.get(host);
+    if (!sr) continue;
+    /* casi todos no tienen contenido light: no tocar nada (cada cambio de
+     * atributo es un re-layout de toda la pagina) */
+    var texts = [], other = false;
+    for (var c = ns.first(host); c; c = ns.next(c)) {
+      var ty = ns.type(c);
+      if (ty === 3) { if (/\S/.test(ns.value(c) || '')) texts.push(c); }
+      else if (ty === 1 && c !== sr) other = true;
+    }
+    if (!texts.length && !other) continue;
+    if (sr.querySelector('slot')) continue;
+    for (var k = 0; k < texts.length; k++) {
+      var w = ns.createElement('eon-light');
+      ns.insert(host, w, texts[k]);
+      ns.append(w, texts[k]);
+    }
+    ns.setAttr(host, 'eon-noslot', '');
+  }
+}
+function shadowCheckSoon() {
+  if (shadowCheckPending) return;
+  shadowCheckPending = true;
+  setTimeout(shadowCheck, 0);
+}
 var ceDefs = new Map();      /* nombre -> {name, ctor, observed} */
 var ceByCtor = new Map();    /* constructor -> definicion */
 var ceDone = new WeakSet();  /* elementos ya construidos */
@@ -6248,6 +6308,36 @@ eventClass(Event, 'BeforeUnloadEvent', { returnValue: '' });
 eventClass(Event, 'SecurityPolicyViolationEvent', { violatedDirective: '', blockedURI: '' });
 eventClass(Event, 'ToggleEvent', { oldState: '', newState: '' });
 eventClass(Event, 'MediaQueryListEvent', { matches: false, media: '' });
+eventClass(Event, 'ClipboardEvent', { clipboardData: null });
+eventClass(Event, 'FormDataEvent', { formData: null });
+/* globales que las paginas usan sin preguntar si existen (reddit: MediaError) */
+if (!('MediaError' in G)) {
+  var MediaErrorC = class MediaError { constructor(code, msg) { this.code = code || 0; this.message = msg || ''; } };
+  [['MEDIA_ERR_ABORTED', 1], ['MEDIA_ERR_NETWORK', 2], ['MEDIA_ERR_DECODE', 3], ['MEDIA_ERR_SRC_NOT_SUPPORTED', 4]].forEach(function (c) {
+    MediaErrorC[c[0]] = c[1]; MediaErrorC.prototype[c[0]] = c[1];
+  });
+  defGlobal('MediaError', MediaErrorC);
+}
+if (!('TimeRanges' in G)) {
+  defGlobal('TimeRanges', class TimeRanges {
+    constructor(r) { this._r = r || []; }
+    get length() { return this._r.length; }
+    start(i) { if (!this._r[i]) throw new DOMException('IndexSizeError', 'IndexSizeError'); return this._r[i][0]; }
+    end(i) { if (!this._r[i]) throw new DOMException('IndexSizeError', 'IndexSizeError'); return this._r[i][1]; }
+  });
+}
+if (!('ReportingObserver' in G)) {
+  defGlobal('ReportingObserver', class ReportingObserver { constructor(cb) { this._cb = cb; } observe() {} disconnect() {} takeRecords() { return []; } });
+}
+if (!('scheduler' in G)) {
+  defGlobal('scheduler', {
+    postTask: function (cb, opt) {
+      var d = (opt && opt.delay) || 0;
+      return new Promise(function (res, rej) { setTimeout(function () { try { res(cb()); } catch (e) { rej(e); } }, d); });
+    },
+    yield: function () { return new Promise(function (res) { setTimeout(res, 0); }); }
+  });
+}
 
 /* elementos HTML que faltaban: prototipo propio con su etiqueta */
 [['HTMLHeadingElement', ['H1', 'H2', 'H3', 'H4', 'H5', 'H6']], ['HTMLPreElement', ['PRE']],
@@ -6277,6 +6367,29 @@ try {
   dlg.show = function () { ns.setAttr(this, 'open', ''); };
   dlg.showModal = dlg.show;
   dlg.close = function (rv) { ns.removeAttr(this, 'open'); this.returnValue = rv === undefined ? '' : String(rv); this.dispatchEvent(new Event('close')); };
+  /* Popover API: [popover] arranca escondido (regla en default.css) y se
+   * muestra con el atributo eon-popover-open */
+  var hp = HTMLElement.prototype;
+  var popToggle = function (el, open) {
+    var was = ns.getAttr(el, 'eon-popover-open') !== null;
+    if (was === open) return;
+    var be = new Event('beforetoggle');
+    be.oldState = was ? 'open' : 'closed'; be.newState = open ? 'open' : 'closed';
+    el.dispatchEvent(be);
+    if (open) ns.setAttr(el, 'eon-popover-open', ''); else ns.removeAttr(el, 'eon-popover-open');
+    var te = new Event('toggle');
+    te.oldState = be.oldState; te.newState = be.newState;
+    el.dispatchEvent(te);
+  };
+  hp.showPopover = function () { popToggle(this, true); };
+  hp.hidePopover = function () { popToggle(this, false); };
+  hp.togglePopover = function (force) {
+    var open = force === undefined ? ns.getAttr(this, 'eon-popover-open') === null : !!force;
+    popToggle(this, open);
+    return open;
+  };
+  Object.defineProperty(hp, 'popover', { get: function () { var v = ns.getAttr(this, 'popover'); return v === null ? null : (v === 'manual' ? 'manual' : 'auto'); },
+    set: function (v) { if (v === null || v === undefined) ns.removeAttr(this, 'popover'); else ns.setAttr(this, 'popover', String(v)); }, configurable: true });
   var det = TAG_PROTOTYPES.DETAILS;
   Object.defineProperty(det, 'open', { get: function () { return ns.getAttr(this, 'open') !== null; },
     set: function (v) { if (v) ns.setAttr(this, 'open', ''); else ns.removeAttr(this, 'open'); }, configurable: true });
