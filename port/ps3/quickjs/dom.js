@@ -1522,6 +1522,7 @@ class CSSStyleDeclaration {
     }
     if (!found) d.push([name, val]);
     if (name === 'transform') eonTranslateAux(this._el, d, val);
+    if (name === 'opacity') eonOpacityAux(d, val);
     setAttrNotify(this._el, 'style', this._serialize(d));
   }
   removeProperty(name) {
@@ -1570,6 +1571,16 @@ function eonTranslateAux(el, d, val) {
     if (!zero(y)) { var ky = abs ? 'margin-top' : 'top'; d.push([ky, y]); added.push(ky); }
   }
   translateAux.set(el, added);
+}
+
+/* sin opacidad en NetSurf: opacity 0 desde JS = visibility hidden */
+function eonOpacityAux(d, val) {
+  var o = parseFloat(val);
+  if (isNaN(o)) return;
+  /* la marca no sobrevive al atributo: se asume que un visibility:hidden en
+   * linea junto a opacity lo puso esta funcion */
+  for (var i = d.length - 1; i >= 0; i--) if (d[i][0] === 'visibility' && /^hidden/.test(String(d[i][1]))) d.splice(i, 1);
+  if (o <= 0.05) d.push(['visibility', 'hidden']);
 }
 
 function makeStyle(el) {

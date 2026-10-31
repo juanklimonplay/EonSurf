@@ -458,6 +458,25 @@ static void eon_modern_block(eon_out *o, eon_out *extra, eon_span sel, const cha
 			eon_putz(o, "left:0;");
 		} else if (eon_span_is(prop, "top") && eon_center_y(&bi)) {
 			/* lo pone eon_emit_translate */
+		} else if (eon_span_is(prop, "opacity") && strtod(val.s, NULL) <= 0.05 &&
+			   val.n && (isdigit((unsigned char)val.s[0]) || val.s[0] == '.')) {
+			/* NetSurf no tiene opacidad: algo invisible se veria (y las capas
+			 * de pantalla completa con opacity:0 taparian la pagina) */
+			eon_put(o, ds, (size_t)(de - ds));
+			eon_put(o, ";", 1);
+			eon_decl(o, "visibility", (eon_span){ "hidden", 6 }, imp);
+		} else if (eon_span_is(prop, "opacity") && strtod(val.s, NULL) >= 0.5) {
+			/* volver a mostrar lo que otra regla escondio con opacity:0 */
+			eon_put(o, ds, (size_t)(de - ds));
+			eon_put(o, ";", 1);
+			eon_decl(o, "visibility", (eon_span){ "visible", 7 }, imp);
+		} else if (eon_span_is(prop, "transform") && (eon_memmem(val.s, val.n, "scale(0)", 8) ||
+			   eon_memmem(val.s, val.n, "scale(0,", 8) || eon_memmem(val.s, val.n, "scaleY(0)", 9) ||
+			   eon_memmem(val.s, val.n, "scaleX(0)", 9))) {
+			/* encogido a cero = escondido */
+			eon_put(o, ds, (size_t)(de - ds));
+			eon_put(o, ";", 1);
+			eon_decl(o, "visibility", (eon_span){ "hidden", 6 }, imp);
 		} else if (eon_span_is(prop, "position") && eon_span_is(val, "sticky")) {
 			/* sticky: lo mas parecido sin scroll ligado es relative */
 			eon_decl(o, "position", (eon_span){ "relative", 8 }, imp);
@@ -647,7 +666,8 @@ static char *eon_css_modernize(const char *css, size_t len, size_t *outlen)
 	/* atajo: si no hay nada de esto, no tocar */
 	if (eon_memmem(css, len, "grid", 4) == NULL && eon_memmem(css, len, "inset", 5) == NULL &&
 	    eon_memmem(css, len, "gap", 3) == NULL && eon_memmem(css, len, "place-", 6) == NULL &&
-	    eon_memmem(css, len, "translate", 9) == NULL && eon_memmem(css, len, "sticky", 6) == NULL) {
+	    eon_memmem(css, len, "translate", 9) == NULL && eon_memmem(css, len, "sticky", 6) == NULL &&
+	    eon_memmem(css, len, "opacity", 7) == NULL && eon_memmem(css, len, "scale", 5) == NULL) {
 		return NULL;
 	}
 	eon_modern_rules(&o, css, css + len, false);

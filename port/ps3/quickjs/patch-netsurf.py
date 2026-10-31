@@ -139,3 +139,9 @@ long eon_llcache_http_code(const llcache_handle *handle)
 }
 ''')
 print('EonSurf: codigo HTTP en llcache')
+
+# Medicion: cuanto tarda cada recalculo de diseno (layout) de una pagina
+patch(HTML + 'html.c', '''	ms_interval = (ms_after - ms_before) * 3;''', '''	NSLOG(netsurf, INFO, "EonSurf: layout %dx%d took %u ms", width, height,
+	      (unsigned)(ms_after - ms_before));
+	ms_interval = (ms_after - ms_before) * 3;''')
+print('EonSurf: medicion de layout')
