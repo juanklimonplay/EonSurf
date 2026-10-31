@@ -15,6 +15,11 @@ h1 { margin: 0; }
 #grilla div { background: #1f6feb; color: #fff; padding: 8px; text-align: center; }
 #grilla .ancha { grid-column: 1 / -1; background: #8957e5; }
 #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 360px; height: 60px; background: #e8a33d; color: #000; padding: 10px; }
+@layer utilities { @media (width >= 40rem) { :where(#tw4) { color: oklch(0.79 0.2 151); border-left: 6px solid oklch(0.62 0.21 259); padding-left: 8px; } } }
+#flexj { display: flex; justify-content: space-between; align-items: center; width: 700px; margin: 8px 0; padding: 6px; background: #1a2233; }
+#flexj span { background: #3ddc84; color: #000; padding: 4px 10px; }
+#flexg { display: flex; gap: calc(6px * 4); justify-content: center; width: 700px; padding-block: 6px; background: #1a2233; }
+#flexg span { background: #00c8ff; color: #000; padding-inline: 10px; }
 #cssvar { color: var(--eon-ok); font-size: var(--eon-tam); border-left: 6px solid var(--eon-nada, #00c8ff); padding-left: 8px; }
 </style>
 </head>
@@ -22,6 +27,9 @@ h1 { margin: 0; }
 <h1>Prueba de JavaScript</h1>
 <p id="estado">JavaScript NO se ejecutó.</p>
 <p id="cssvar">Variables CSS: este texto tiene que ser verde, grande y con borde celeste</p>
+<p id="tw4">Tailwind 4 (@layer, oklch, :where, rango de media): verde con borde azul</p>
+<div id="flexj"><span>izquierda</span><span>centro</span><span>derecha (space-between)</span></div>
+<div id="flexg"><span>A</span><span>B</span><span>C: centrados con gap de 24px</span></div>
 <div id="modal">Modal centrado con transform (tiene que estar en el medio de la pantalla)</div>
 <div id="grilla"><div>1</div><div>2</div><div>3</div><div class="ancha">grilla CSS: 3 columnas y esta fila completa</div><div>4</div><div>5</div><div>6</div></div>
 <p id="cssom">CSSOM: este texto se pone verde con una regla de insertRule</p>
@@ -129,6 +137,21 @@ prueba('atributos estilo Lit (@ . ?)', function () {
 	var names = d.firstChild.getAttributeNames().join();
 	return names.indexOf('@click$lit$') >= 0 && names.indexOf('.value$lit$') >= 0 && names.indexOf('?hidden$lit$') >= 0;
 });
+prueba('ReadableStream', function () {
+	var rs = new ReadableStream({ start: function (c) { c.enqueue('a'); c.enqueue('b'); c.close(); } });
+	var r = rs.getReader(), out = '';
+	(function step() { r.read().then(function (x) {
+		if (x.done) { prueba('ReadableStream (llegó ' + out + ')', function () { return out === 'ab'; }); return; }
+		out += x.value; step();
+	}); })();
+	return typeof TransformStream === 'function' && typeof WritableStream === 'function';
+});
+setTimeout(function () {
+	var ok = document.querySelectorAll('#lista li.ok').length, no = document.querySelectorAll('#lista li.no');
+	var mal = [];
+	for (var i = 0; i < no.length; i++) mal.push(no[i].textContent);
+	console.log('JSTEST: ' + ok + ' OK, ' + no.length + ' FALLAS' + (mal.length ? ': ' + mal.join(' | ') : ''));
+}, 8000);
 var n = 0;
 setInterval(function () {
 	n++;
