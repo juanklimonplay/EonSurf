@@ -114,6 +114,21 @@ prueba('CSSOM insertRule', function () {
 	return st.sheet.cssRules.length === 2 && st.sheet.cssRules[0].selectorText === '#cssom' &&
 		st.sheet.cssRules[0].style.color === '#3ddc84' && document.styleSheets.length >= 1;
 });
+prueba('TreeWalker como Lit', function () {
+	var t = document.createElement('template');
+	t.innerHTML = '<p class="a"><b>1</b></p><i>2</i>';
+	var w = document.createTreeWalker(document, 129);
+	w.currentNode = t.content;
+	var names = [], n;
+	while ((n = w.nextNode()) !== null) names.push(n.nodeName);
+	return names.join() === 'P,B,I' && t.content.firstChild.hasAttributes();
+});
+prueba('atributos estilo Lit (@ . ?)', function () {
+	var d = document.createElement('div');
+	d.innerHTML = '<button @click$lit$="x" .value$lit$="y" ?hidden$lit$="z">b</button>';
+	var names = d.firstChild.getAttributeNames().join();
+	return names.indexOf('@click$lit$') >= 0 && names.indexOf('.value$lit$') >= 0 && names.indexOf('?hidden$lit$') >= 0;
+});
 var n = 0;
 setInterval(function () {
 	n++;

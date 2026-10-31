@@ -223,3 +223,39 @@ _r = open(HTML + 'redraw.c').read()
 assert _r.count(old_body) == 1, _r.count(old_body)
 open(HTML + 'redraw.c', 'w').write(_r.replace(old_body, new_body))
 print('EonSurf: z-index en el pintado')
+
+# Nombres de atributo/elemento como en el analizador HTML: libdom exigia nombres
+# XML validos y descartaba "@click", ".value", "?disabled" (Lit los usa en sus
+# plantillas: sin ellos las piezas se corren y aparece codigo como texto)
+_v = open('libdom/src/utils/validate.c').read()
+_old = """	if (is_first_char(ch) == false)
+		return false;
+	
+	s += clen;
+	slen -= clen;
+	
+	while (slen > 0) {
+		err = parserutils_charset_utf8_to_ucs4(s, slen, &ch, &clen);
+		if (err != PARSERUTILS_OK) {
+			return false;
+		}
+
+		if (is_name_char(ch) == false)
+			return false;
+"""
+assert _v.count(_old) == 1
+_new = """	/* EonSurf: criterio del analizador HTML, no de XML */
+	(void)is_first_char;
+	(void)is_name_char;
+	while (slen > 0) {
+		err = parserutils_charset_utf8_to_ucs4(s, slen, &ch, &clen);
+		if (err != PARSERUTILS_OK) {
+			return false;
+		}
+
+		if (ch <= 0x20 || ch == '/' || ch == '>' || ch == '=' ||
+		    ch == 0x22 || ch == 0x27 || ch == 0x7f)
+			return false;
+"""
+open('libdom/src/utils/validate.c', 'w').write(_v.replace(_old, _new))
+print('EonSurf: nombres de atributo como en HTML')

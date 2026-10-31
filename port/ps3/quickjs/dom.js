@@ -2392,13 +2392,12 @@ defineTag(HTMLAudioElement.prototype, 'HTMLAudioElement');
 var templateContent = new WeakMap();
 class HTMLTemplateElement extends HTMLElement {
   get content() {
+    /* como en el estandar, los hijos de <template> viven en su fragmento:
+     * los que aparezcan (p. ej. por innerHTML) se mudan ahi */
     var f = templateContent.get(this);
-    if (!f) {
-      f = ns.createFragment();
-      var kids = ns.children(this);
-      for (var i = 0; i < kids.length; i++) ns.append(f, ns.clone(kids[i], true));
-      templateContent.set(this, f);
-    }
+    if (!f) { f = ns.createFragment(); templateContent.set(this, f); }
+    var kids = ns.children(this);
+    for (var i = 0; i < kids.length; i++) ns.append(f, kids[i]);
     return f;
   }
 }
@@ -2641,28 +2640,57 @@ class TreeWalker {
     }
     return null;
   }
+  /* resultado del filtro como en el estandar: 1 aceptar, 2 rechazar, 3 saltear */
+  _code(n) {
+    var t = ns.type(n);
+    var bit = 1 << (t - 1);
+    if (!(this.whatToShow & bit)) return 3;
+    if (!this.filter) return 1;
+    try {
+      var r = typeof this.filter === 'function' ? this.filter(n) : this.filter.acceptNode(n);
+      return r === 2 || r === 3 ? r : 1;
+    } catch (_) { return 1; }
+  }
+  /* Algoritmo del estandar: avanza desde currentNode en orden de documento.
+   * Lit usa un solo TreeWalker con root=document y le pone como currentNode el
+   * fragmento de la plantilla, asi que no se puede partir desde root. */
   nextNode() {
-    var list = [], self = this;
-    (function walk(n) {
-      var kids = ns.children(n);
-      for (var i = 0; i < kids.length; i++) { list.push(kids[i]); walk(kids[i]); }
-    })(this.root);
-    var at = list.indexOf(this.currentNode);
-    for (var j = at + 1; j < list.length; j++) {
-      if (self._accept(list[j])) { this.currentNode = list[j]; return list[j]; }
+    var node = this.currentNode, root = this.root, r = 1;
+    for (;;) {
+      var c;
+      while (r !== 2 && (c = ns.first(node))) {
+        node = c;
+        r = this._code(node);
+        if (r === 1) { this.currentNode = node; return node; }
+      }
+      var sib = null, tmp = node;
+      while (tmp) {
+        if (tmp === root) return null;
+        sib = ns.next(tmp);
+        if (sib) break;
+        tmp = ns.parent(tmp);
+      }
+      if (!sib) return null;
+      node = sib;
+      r = this._code(node);
+      if (r === 1) { this.currentNode = node; return node; }
     }
-    return null;
   }
   previousNode() {
-    var list = [], self = this;
-    (function walk(n) {
-      var kids = ns.children(n);
-      for (var i = 0; i < kids.length; i++) { list.push(kids[i]); walk(kids[i]); }
-    })(this.root);
-    var at = list.indexOf(this.currentNode);
-    if (at < 0) at = list.length;
-    for (var j = at - 1; j >= 0; j--) {
-      if (self._accept(list[j])) { this.currentNode = list[j]; return list[j]; }
+    var node = this.currentNode, root = this.root;
+    while (node && node !== root) {
+      var sib = ns.prev(node);
+      while (sib) {
+        node = sib;
+        var r = this._code(node), lc;
+        while (r !== 2 && (lc = ns.last(node))) { node = lc; r = this._code(node); }
+        if (r === 1) { this.currentNode = node; return node; }
+        sib = ns.prev(node);
+      }
+      var p = ns.parent(node);
+      if (node === root || !p) return null;
+      node = p;
+      if (this._code(node) === 1) { this.currentNode = node; return node; }
     }
     return null;
   }
@@ -5797,6 +5825,100 @@ defGlobal('CSS', Object.assign(G.CSS || {}, {
   },
   escape: function (s) { return String(s).replace(/([^\w-])/g, '\\$1').replace(/^(\d)/, '\\3$1 '); }
 }));
+
+
+/* ---------------------------------------------------------------- blob: y extras de la T5 */
+/* URL.createObjectURL: reddit (es-module-shims) arma modulos en memoria y los
+ * importa por URL blob:. Los blobs quedan en un registro; fetch, XHR y el
+ * cargador de modulos (via __ns.blobText) los leen de ahi. */
+var blobRegistry = new Map();
+var nextBlobId = 1;
+function blobText(b) {
+  if (b && typeof b._text === 'string') return b._text;
+  if (b instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(b));
+  return String(b);
+}
+URL.createObjectURL = function (b) {
+  var u = 'blob:' + (location.origin || 'null') + '/eon-' + (nextBlobId++) + '-' + Math.random().toString(36).slice(2, 10);
+  blobRegistry.set(u, b);
+  return u;
+};
+URL.revokeObjectURL = function (u) { blobRegistry['delete'](String(u)); };
+hook('blobText', function (u) {
+  var b = blobRegistry.get(String(u));
+  return b === undefined ? undefined : blobText(b);
+});
+var fetchNet = fetch;
+fetch = function (input, init) {
+  var u = typeof input === 'string' ? input : (input && input.url) || String(input);
+  if (/^blob:/.test(u)) {
+    var b = blobRegistry.get(u);
+    if (b === undefined) return Promise.reject(new TypeError('Failed to fetch'));
+    return Promise.resolve(new Response(blobText(b), { status: 200, headers: { 'content-type': (b && b.type) || 'text/plain' }, url: u }));
+  }
+  if (/^data:/.test(u)) {
+    var m = /^data:([^,;]*)(;base64)?,(.*)$/s.exec(u);
+    if (!m) return Promise.reject(new TypeError('Failed to fetch'));
+    var txt = m[2] ? atob(m[3]) : decodeURIComponent(m[3]);
+    return Promise.resolve(new Response(txt, { status: 200, headers: { 'content-type': m[1] || 'text/plain' }, url: u }));
+  }
+  return fetchNet(input, init);
+};
+defGlobal('fetch', fetch);
+/* Interfaces que los sitios usan con instanceof o comprueban al arrancar
+ * (Instagram: DOMStringMap). Si ya existen no se tocan. */
+[['DOMStringMap'], ['NamedNodeMap'], ['HTMLOptionsCollection'], ['RadioNodeList'], ['DOMRectList'],
+ ['StaticRange'], ['History'], ['Location'], ['Navigator'], ['Screen'], ['BarProp'], ['DOMImplementation'],
+ ['HTMLAllCollection'], ['TextTrack'], ['TextTrackList'], ['MediaList'], ['DOMStringList'], ['Plugin'],
+ ['PluginArray'], ['MimeType'], ['MimeTypeArray'], ['Crypto'], ['SubtleCrypto'], ['CacheStorage']
+].forEach(function (n) {
+  if (!(n[0] in G)) {
+    var C = class {};
+    defineTag(C.prototype, n[0]);
+    defGlobal(n[0], C);
+  }
+});
+try {
+  if (G.history && !(G.history instanceof G.History)) Object.setPrototypeOf(G.history, G.History.prototype);
+  if (G.navigator && !(G.navigator instanceof G.Navigator)) Object.setPrototypeOf(G.navigator, G.Navigator.prototype);
+  if (G.screen && !(G.screen instanceof G.Screen)) Object.setPrototypeOf(G.screen, G.Screen.prototype);
+} catch (_) {}
+class VisualViewport extends EventTarget {
+  constructor() { super(); this.offsetLeft = 0; this.offsetTop = 0; this.pageLeft = 0; this.pageTop = 0; this.width = 1280; this.height = 668; this.scale = 1; }
+}
+defGlobal('VisualViewport', VisualViewport);
+defGlobal('visualViewport', new VisualViewport());
+defGlobal('XPathResult', { ANY_TYPE: 0, NUMBER_TYPE: 1, STRING_TYPE: 2, BOOLEAN_TYPE: 3, UNORDERED_NODE_ITERATOR_TYPE: 4,
+  ORDERED_NODE_ITERATOR_TYPE: 5, UNORDERED_NODE_SNAPSHOT_TYPE: 6, ORDERED_NODE_SNAPSHOT_TYPE: 7,
+  ANY_UNORDERED_NODE_TYPE: 8, FIRST_ORDERED_NODE_TYPE: 9 });
+
+var nonceOf = new WeakMap();
+try {
+  Object.defineProperty(HTMLElement.prototype, 'nonce', {
+    get: function () { return nonceOf.has(this) ? nonceOf.get(this) : (ns.getAttr(this, 'nonce') || ''); },
+    set: function (v) { nonceOf.set(this, String(v)); }, configurable: true
+  });
+} catch (_) {}
+
+/* document.currentScript: mientras corre un script es el ultimo <script>
+ * del documento (el que el analizador acaba de procesar); si no, null */
+try {
+  Object.defineProperty(Document.prototype, 'currentScript', {
+    get: function () {
+      if (!ns.executing) return null;
+      var all = ns.byTag(this, 'script');
+      return all.length ? all[all.length - 1] : null;
+    }, configurable: true
+  });
+} catch (e) { log('currentScript: ' + errText(e)); }
+try {
+  Object.defineProperty(Element.prototype, 'hasAttributes', {
+    value: function () { return ns.attrNames(this).length > 0; }, writable: true, configurable: true
+  });
+  Object.defineProperty(Node.prototype, 'hasAttributes', {
+    value: function () { return ns.type(this) === ELEMENT_NODE && ns.attrNames(this).length > 0; }, writable: true, configurable: true
+  });
+} catch (e) { log('hasAttributes: ' + errText(e)); }
 
 /* Navigation Timing (YouTube y medidores de rendimiento lo leen al arrancar) */
 var navEntry = {

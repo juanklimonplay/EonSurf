@@ -1370,6 +1370,9 @@ static char *eon_mod_normalize(JSContext *ctx, const char *base, const char *nam
 	char *r = NULL;
 	(void)opaque;
 	/* nombres "pelados" (sin ./ ../ / ni esquema): import map */
+	if (strncmp(name, "blob:", 5) == 0 || strncmp(name, "data:", 5) == 0) {
+		return js_strdup(ctx, name);
+	}
 	if (name[0] != '.' && name[0] != '/' && strstr(name, "://") == NULL &&
 	    strncmp(name, "data:", 5) != 0 && strncmp(name, "blob:", 5) != 0) {
 		r = eon_importmap_lookup(ctx, name);
@@ -1408,7 +1411,23 @@ static JSModuleDef *eon_mod_loader(JSContext *ctx, const char *name, void *opaqu
 	(void)opaque;
 
 	NSLOG(netsurf, INFO, "EonSurf: import %s", name);
-	src = eon_fetch_sync(name, &len);
+	if (strncmp(name, "blob:", 5) == 0) {
+		/* modulo armado en memoria (URL.createObjectURL): lo tiene dom.js */
+		struct jsthread *bt = eon_thread(ctx);
+		JSValue arg = JS_NewString(ctx, name);
+		JSValue r = eon_call_ns(bt, "blobText", 1, &arg);
+		const char *bs = JS_IsString(r) ? JS_ToCStringLen(ctx, &len, r) : NULL;
+		JS_FreeValue(ctx, arg);
+		src = NULL;
+		if (bs != NULL) {
+			src = malloc(len + 1);
+			if (src != NULL) { memcpy(src, bs, len); src[len] = '\0'; }
+			JS_FreeCString(ctx, bs);
+		}
+		JS_FreeValue(ctx, r);
+	} else {
+		src = eon_fetch_sync(name, &len);
+	}
 	if (src == NULL) {
 		JS_ThrowReferenceError(ctx, "could not load module '%s'", name);
 		return NULL;
@@ -1962,6 +1981,8 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	memcpy(buf, txt, txtlen);
 	buf[txtlen] = '\0';
 	NSLOG(netsurf, INFO, "EonSurf: js_exec %s (%u bytes)", name != NULL ? name : "script", (unsigned)txtlen);
+	/* document.currentScript: dom.js sabe que hay un script corriendo */
+	JS_SetPropertyStr(t->ctx, t->ns, "executing", JS_NewBool(t->ctx, 1));
 	if (name != NULL && strcmp(name, "importmap:") == 0) {
 		/* <script type="importmap">: dom.js guarda el JSON */
 		JSValue arg = JS_NewStringLen(t->ctx, buf, txtlen);
@@ -1985,6 +2006,7 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 			    JS_EVAL_TYPE_GLOBAL);
 	}
 	free(buf);
+	JS_SetPropertyStr(t->ctx, t->ns, "executing", JS_NewBool(t->ctx, 0));
 	ok = !JS_IsException(r);
 	if (!ok) {
 		eon_log_exception(t->ctx, name != NULL ? name : "script");
