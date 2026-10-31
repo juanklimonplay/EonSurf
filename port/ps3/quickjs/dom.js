@@ -1521,6 +1521,7 @@ class CSSStyleDeclaration {
       if (d[i][0] === name) { d[i][1] = val; found = true; break; }
     }
     if (!found) d.push([name, val]);
+    if (name === 'transform') eonTranslateAux(this._el, d, val);
     setAttrNotify(this._el, 'style', this._serialize(d));
   }
   removeProperty(name) {
@@ -1540,6 +1541,36 @@ class CSSStyleDeclaration {
   }
 }
 defineTag(CSSStyleDeclaration.prototype, 'CSSStyleDeclaration');
+
+/* NetSurf no dibuja transform: cuando un script mueve algo con translate
+ * (carruseles, menus que entran y salen) se agrega el equivalente con
+ * position:relative + left/top, o margenes si ya esta posicionado. Las
+ * propiedades agregadas se recuerdan para actualizarlas la proxima vez. */
+var translateAux = new WeakMap();
+function eonTranslateAux(el, d, val) {
+  var x = '', y = '', m;
+  var re = /(translate3d|translateX|translateY|translate)\(([^)]*)\)/gi;
+  while ((m = re.exec(val)) !== null) {
+    var a = m[2].split(',').map(function (s) { return s.trim(); });
+    var f = m[1].toLowerCase();
+    if (f === 'translatex') x = a[0];
+    else if (f === 'translatey') y = a[0];
+    else { x = a[0] || ''; y = a[1] || ''; }
+  }
+  var old = translateAux.get(el) || [];
+  for (var i = d.length - 1; i >= 0; i--) if (old.indexOf(d[i][0]) >= 0) d.splice(i, 1);
+  var zero = function (v) { return !v || parseFloat(v) === 0; };
+  var pos = '';
+  for (var j = 0; j < d.length; j++) if (d[j][0] === 'position') pos = String(d[j][1]).toLowerCase();
+  var added = [];
+  if (!zero(x) || !zero(y)) {
+    var abs = pos.indexOf('absolute') === 0 || pos.indexOf('fixed') === 0;
+    if (!abs && !pos) { d.push(['position', 'relative']); added.push('position'); }
+    if (!zero(x)) { var kx = abs ? 'margin-left' : 'left'; d.push([kx, x]); added.push(kx); }
+    if (!zero(y)) { var ky = abs ? 'margin-top' : 'top'; d.push([ky, y]); added.push(ky); }
+  }
+  translateAux.set(el, added);
+}
 
 function makeStyle(el) {
   var target = new CSSStyleDeclaration(el, false);

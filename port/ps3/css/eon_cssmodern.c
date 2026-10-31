@@ -271,6 +271,123 @@ static void eon_grid_rules(eon_out *x, eon_span sel, eon_tracks *t, const char *
 	}
 }
 
+/* ---------------------------------------------------------------- transform */
+
+/* translate(x, y), translateX(x), translateY(y), translate3d(x, y, z) dentro de
+ * un valor de transform; devuelve false si no hay traslacion */
+static bool eon_parse_translate(eon_span v, char *x, size_t xn, char *y, size_t yn)
+{
+	const char *p = v.s, *end = v.s + v.n;
+	bool found = false;
+	x[0] = y[0] = '\0';
+	while (p < end) {
+		const char *f = p, *open;
+		while (p < end && (isalpha((unsigned char)*p) || isdigit((unsigned char)*p))) p++;
+		if (p >= end || *p != '(') { p++; continue; }
+		open = p;
+		{
+			eon_span name = eon_trim(f, open), args[3];
+			const char *close = memchr(open, ')', (size_t)(end - open));
+			int n = 0;
+			const char *a = open + 1;
+			if (close == NULL) break;
+			while (a < close && n < 3) {
+				const char *c = memchr(a, ',', (size_t)(close - a));
+				if (c == NULL) c = close;
+				args[n++] = eon_trim(a, c);
+				a = c + 1;
+			}
+			if (eon_span_is(name, "translate") || eon_span_is(name, "translate3d")) {
+				if (n >= 1) snprintf(x, xn, "%.*s", (int)args[0].n, args[0].s);
+				if (n >= 2) snprintf(y, yn, "%.*s", (int)args[1].n, args[1].s);
+				found = true;
+			} else if (eon_span_is(name, "translateX")) {
+				if (n >= 1) snprintf(x, xn, "%.*s", (int)args[0].n, args[0].s);
+				found = true;
+			} else if (eon_span_is(name, "translateY")) {
+				if (n >= 1) snprintf(y, yn, "%.*s", (int)args[0].n, args[0].s);
+				found = true;
+			}
+			p = close + 1;
+		}
+	}
+	return found;
+}
+
+static bool eon_is_zero(const char *v)
+{
+	return v[0] == '\0' || ((v[0] == '0' || v[0] == '-') && strtod(v, NULL) == 0.0);
+}
+
+/* lo que el bloque dice de posicion: para elegir como traducir transform */
+typedef struct {
+	char position[16];
+	char top[24], left[24], height[24];
+	char tx[48], ty[48];
+	bool has_translate;
+} eon_blockinfo;
+
+static void eon_block_scan(const char *p, const char *end, eon_blockinfo *bi)
+{
+	memset(bi, 0, sizeof(*bi));
+	while (p < end) {
+		const char *ds = p, *colon = NULL, *de;
+		int d = 0;
+		for (de = p; de < end; de++) {
+			if (*de == '(') d++;
+			else if (*de == ')') d--;
+			else if (*de == ':' && colon == NULL && d == 0) colon = de;
+			else if (*de == ';' && d == 0) break;
+		}
+		p = de < end ? de + 1 : end;
+		if (colon == NULL) continue;
+		{
+			eon_span prop = eon_trim(ds, colon), val = eon_trim(colon + 1, de);
+			const char *bang = memchr(val.s, '!', val.n);
+			if (bang) val = eon_trim(val.s, bang);
+			if (eon_span_is(prop, "position")) snprintf(bi->position, sizeof(bi->position), "%.*s", (int)val.n, val.s);
+			else if (eon_span_is(prop, "top")) snprintf(bi->top, sizeof(bi->top), "%.*s", (int)val.n, val.s);
+			else if (eon_span_is(prop, "left")) snprintf(bi->left, sizeof(bi->left), "%.*s", (int)val.n, val.s);
+			else if (eon_span_is(prop, "height")) snprintf(bi->height, sizeof(bi->height), "%.*s", (int)val.n, val.s);
+			else if (eon_span_is(prop, "transform"))
+				bi->has_translate = eon_parse_translate(val, bi->tx, sizeof(bi->tx), bi->ty, sizeof(bi->ty));
+		}
+	}
+}
+
+/* centrado clasico: left:50% + translateX(-50%) (igual con top) */
+static bool eon_center_x(const eon_blockinfo *bi) { return bi->has_translate && strcmp(bi->tx, "-50%") == 0 && strcmp(bi->left, "50%") == 0; }
+static bool eon_center_y(const eon_blockinfo *bi) { return bi->has_translate && strcmp(bi->ty, "-50%") == 0 && strcmp(bi->top, "50%") == 0; }
+
+/* transform -> algo que NetSurf entiende */
+static void eon_emit_translate(eon_out *o, const eon_blockinfo *bi, eon_span imp)
+{
+	bool abs = strcasecmp(bi->position, "absolute") == 0 || strcasecmp(bi->position, "fixed") == 0;
+	bool cx = eon_center_x(bi), cy = eon_center_y(bi);
+	char buf[96];
+	if (cx) {
+		eon_putz(o, "left:0;right:0;margin-left:auto;margin-right:auto;");
+	}
+	if (cy) {
+		/* con alto conocido se centra; si no, top/bottom 0 lo estiraria */
+		if (bi->height[0] && strcasecmp(bi->height, "auto") != 0)
+			eon_putz(o, "top:0;bottom:0;margin-top:auto;margin-bottom:auto;");
+		else
+			eon_putz(o, "top:10%;");
+	}
+	if (abs) {
+		/* ya posicionado: correrlo con margenes */
+		if (!cx && !eon_is_zero(bi->tx)) { snprintf(buf, sizeof(buf), "margin-left:%s;", bi->tx); eon_putz(o, buf); }
+		if (!cy && !eon_is_zero(bi->ty)) { snprintf(buf, sizeof(buf), "margin-top:%s;", bi->ty); eon_putz(o, buf); }
+	} else if (!eon_is_zero(bi->tx) || !eon_is_zero(bi->ty)) {
+		/* en el flujo: posicion relativa, que tampoco empuja a los vecinos */
+		if (bi->position[0] == '\0' || strcasecmp(bi->position, "static") == 0) eon_putz(o, "position:relative;");
+		if (!eon_is_zero(bi->tx)) { snprintf(buf, sizeof(buf), "left:%s;", bi->tx); eon_putz(o, buf); }
+		if (!eon_is_zero(bi->ty)) { snprintf(buf, sizeof(buf), "top:%s;", bi->ty); eon_putz(o, buf); }
+	}
+	(void)imp;
+}
+
 /* reescribe un bloque de declaraciones; extra recibe reglas nuevas para los hijos */
 static void eon_modern_block(eon_out *o, eon_out *extra, eon_span sel, const char *p, const char *end)
 {
@@ -279,6 +396,9 @@ static void eon_modern_block(eon_out *o, eon_out *extra, eon_span sel, const cha
 	eon_tracks tracks;
 	char colgap[80] = "";
 	char rowgap[80] = "";
+	eon_blockinfo bi;
+
+	eon_block_scan(p, end, &bi);
 
 	while (p < end) {
 		const char *ds = p, *colon = NULL, *de;
@@ -312,7 +432,19 @@ static void eon_modern_block(eon_out *o, eon_out *extra, eon_span sel, const cha
 			}
 		}
 
-		if (eon_span_is(prop, "inset")) {
+		if (eon_span_is(prop, "transform") && bi.has_translate) {
+			/* se deja el original (no molesta) y se agrega el equivalente */
+			eon_put(o, ds, (size_t)(de - ds));
+			eon_put(o, ";", 1);
+			eon_emit_translate(o, &bi, imp);
+		} else if (eon_span_is(prop, "left") && eon_center_x(&bi)) {
+			eon_putz(o, "left:0;");
+		} else if (eon_span_is(prop, "top") && eon_center_y(&bi)) {
+			eon_putz(o, "top:0;");
+		} else if (eon_span_is(prop, "position") && eon_span_is(val, "sticky")) {
+			/* sticky: lo mas parecido sin scroll ligado es relative */
+			eon_decl(o, "position", (eon_span){ "relative", 8 }, imp);
+		} else if (eon_span_is(prop, "inset")) {
 			eon_span w[4];
 			int n = eon_words(val, w, 4);
 			if (n >= 1) {
@@ -497,7 +629,8 @@ static char *eon_css_modernize(const char *css, size_t len, size_t *outlen)
 	eon_out o = { NULL, 0, 0, true };
 	/* atajo: si no hay nada de esto, no tocar */
 	if (eon_memmem(css, len, "grid", 4) == NULL && eon_memmem(css, len, "inset", 5) == NULL &&
-	    eon_memmem(css, len, "gap", 3) == NULL && eon_memmem(css, len, "place-", 6) == NULL) {
+	    eon_memmem(css, len, "gap", 3) == NULL && eon_memmem(css, len, "place-", 6) == NULL &&
+	    eon_memmem(css, len, "translate", 9) == NULL && eon_memmem(css, len, "sticky", 6) == NULL) {
 		return NULL;
 	}
 	eon_modern_rules(&o, css, css + len, false);
