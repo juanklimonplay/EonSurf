@@ -203,3 +203,14 @@ python3 ../../ps3/css/patch-css.py
 
 # Red mas rapida: sesiones TLS compartidas y mas conexiones reutilizadas
 python3 ../../ps3/net/patch-net.py
+
+# SVG (iconos de Wikipedia, YouTube, GitHub...): libsvgtiny lee el SVG con el
+# analizador XML de libdom; en PS3 se usa el de libxml2 (esta en portlibs)
+sed -i 's/^ifeq ($(WITH_LIBXML_BINDING),enabled_explicitly)$/ifeq (yes,yes) # EonSurf: libxml2 para SVG/' libdom/bindings/xml/Makefile
+sed -i 's/-Wl,--start-group -lqjs /-Wl,--start-group -lqjs -lxml2 /; s/-Wl,--start-group -lrsx /-Wl,--start-group -lxml2 -lrsx /' netsurf/frontends/framebuffer/Makefile
+# las cabeceras y la libreria de libxml2 estan en portlibs (no en el PREFIX de netsurf)
+sed -i 's|^\(    CFLAGS := $(CFLAGS) \)-I$(PREFIX)/include/libxml2|\1-I$(PS3DEV)/portlibs/ppu/include/libxml2|; s|^  ifneq ($(PKGCONFIG),)$|  ifneq (eonsurf,eonsurf)|' libdom/bindings/xml/Makefile
+sed -i 's/^\(    NSLIB_TARG := $(NSLIB_ALL_TARG) \)$(NSLIB_FB_TARG)$/\1$(NSLIB_SVGTINY_TARG) $(NSLIB_FB_TARG)/' Makefile
+echo 'override NETSURF_USE_NSSVG := YES' >> netsurf/Makefile.config
+grep -n "EonSurf: libxml2" libdom/bindings/xml/Makefile; grep -c -- "-lxml2" netsurf/frontends/framebuffer/Makefile
+grep -n "NSLIB_SVGTINY_TARG) \$(NSLIB_FB_TARG)" Makefile

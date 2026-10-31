@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <ctype.h>
 #include <sys/stat.h>
@@ -31,6 +32,7 @@
 #include "utils/errors.h"
 #include "utils/log.h"
 #include "utils/nsoption.h"
+#include "utils/useragent.h"
 #include "utils/nsurl.h"
 #include "utils/corestrings.h"
 #include "netsurf/browser_window.h"
@@ -1433,6 +1435,304 @@ static JSValue eon_eval_module(struct jsthread *t, const char *buf, size_t len, 
 	return JS_EvalFunction(t->ctx, fn);
 }
 
+/* ------------------------------------------------------------------ EonFetch */
+
+/* Cliente HTTP propio para fetch/XHR, sobre libcurl en modo multi (asincronico).
+ * La cache de NetSurf solo sabe GET y POST de formulario; los sitios modernos
+ * mandan JSON con PUT/PATCH/DELETE, cabeceras propias y leen las cabeceras y la
+ * URL final de la respuesta. El planificador de NetSurf sondea curl cada 10 ms
+ * mientras haya pedidos. Las cookies salen y entran por urldb (las mismas del
+ * navegador).
+ *
+ *   http2(id, method, url, headers[], body|null, binary)
+ *     -> __ns.onHttp2(id, status, body, rawHeaders, finalUrl)
+ *        body es string, o ArrayBuffer si binary es true
+ *   httpAbort(id)
+ */
+
+typedef struct eon_xfer {
+	struct eon_xfer *next;
+	struct jsthread *thread;
+	int32_t id;
+	CURL *easy;
+	struct curl_slist *hdrs;
+	eon_buf body;
+	eon_buf head;
+	char *post;
+	size_t postlen;
+	char *url;
+	bool binary;
+} eon_xfer;
+
+static CURLM *eon_multi;
+static eon_xfer *eon_xfers;
+static bool eon_poll_scheduled;
+
+static size_t eon_head_write(char *p, size_t sz, size_t n, void *ud)
+{
+	eon_xfer *x = ud;
+	size_t len = sz * n;
+	/* Set-Cookie al almacen de cookies del navegador */
+	if (len > 11 && strncasecmp(p, "Set-Cookie:", 11) == 0) {
+		nsurl *u = NULL;
+		char *v = malloc(len - 11 + 1);
+		if (v != NULL && nsurl_create(x->url, &u) == NSERROR_OK) {
+			size_t i = 11, j = 0;
+			while (i < len && (p[i] == ' ' || p[i] == '\t')) i++;
+			while (i < len && p[i] != '\r' && p[i] != '\n') v[j++] = p[i++];
+			v[j] = '\0';
+			urldb_set_cookie(v, u, NULL);
+			nsurl_unref(u);
+		}
+		free(v);
+	}
+	/* una redireccion empieza otra respuesta: quedarse con las ultimas cabeceras */
+	if (len > 5 && strncmp(p, "HTTP/", 5) == 0) {
+		x->head.len = 0;
+	}
+	return eon_curl_write(p, sz, n, &x->head);
+}
+
+static size_t eon_body_write(void *p, size_t sz, size_t n, void *ud)
+{
+	eon_xfer *x = ud;
+	return eon_curl_write(p, sz, n, &x->body);
+}
+
+static void eon_xfer_free(eon_xfer *x)
+{
+	if (x->easy != NULL) {
+		curl_multi_remove_handle(eon_multi, x->easy);
+		curl_easy_cleanup(x->easy);
+	}
+	curl_slist_free_all(x->hdrs);
+	free(x->body.buf);
+	free(x->head.buf);
+	free(x->post);
+	free(x->url);
+	free(x);
+}
+
+static void eon_xfer_unlink(eon_xfer *x)
+{
+	eon_xfer **pp;
+	for (pp = &eon_xfers; *pp != NULL; pp = &(*pp)->next) {
+		if (*pp == x) {
+			*pp = x->next;
+			return;
+		}
+	}
+}
+
+static void eon_xfer_done(eon_xfer *x, CURLcode rc)
+{
+	struct jsthread *t = x->thread;
+	long code = 0;
+	char *final = NULL;
+	JSValue args[5];
+
+	curl_easy_getinfo(x->easy, CURLINFO_RESPONSE_CODE, &code);
+	curl_easy_getinfo(x->easy, CURLINFO_EFFECTIVE_URL, &final);
+	if (rc != CURLE_OK) {
+		NSLOG(netsurf, INFO, "EonFetch: %s fallo (curl %d)", x->url, (int)rc);
+		code = 0;
+	}
+	if (eon_enter(t)) {
+		args[0] = JS_NewInt32(t->ctx, x->id);
+		args[1] = JS_NewInt32(t->ctx, (int32_t)code);
+		if (x->binary) {
+			args[2] = JS_NewArrayBufferCopy(t->ctx, (const uint8_t *)(x->body.buf ? x->body.buf : ""), x->body.len);
+		} else {
+			args[2] = JS_NewStringLen(t->ctx, x->body.buf ? x->body.buf : "", x->body.len);
+		}
+		args[3] = JS_NewStringLen(t->ctx, x->head.buf ? x->head.buf : "", x->head.len);
+		args[4] = JS_NewString(t->ctx, final != NULL ? final : x->url);
+		JS_FreeValue(t->ctx, eon_call_ns(t, "onHttp2", 5, args));
+		JS_FreeValue(t->ctx, args[2]);
+		JS_FreeValue(t->ctx, args[3]);
+		JS_FreeValue(t->ctx, args[4]);
+		eon_leave(t);
+	}
+}
+
+static void eon_fetch_poll(void *p)
+{
+	int running = 0, left = 0;
+	CURLMsg *m;
+	(void)p;
+	eon_poll_scheduled = false;
+	if (eon_multi == NULL) return;
+	curl_multi_perform(eon_multi, &running);
+	while ((m = curl_multi_info_read(eon_multi, &left)) != NULL) {
+		eon_xfer *x;
+		if (m->msg != CURLMSG_DONE) continue;
+		for (x = eon_xfers; x != NULL && x->easy != m->easy_handle; x = x->next) {
+		}
+		if (x == NULL) continue;
+		eon_xfer_unlink(x);
+		eon_xfer_done(x, m->data.result);
+		eon_xfer_free(x);
+	}
+	if (eon_xfers != NULL) {
+		eon_poll_scheduled = true;
+		guit->misc->schedule(10, eon_fetch_poll, NULL);
+	}
+}
+
+static JSValue ns_http2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	struct jsthread *t = eon_thread(ctx);
+	const char *method = NULL, *url = NULL;
+	nsurl *u = NULL, *base;
+	eon_xfer *x;
+	int32_t id = 0;
+	uint32_t i, n = 0;
+	char *cookie = NULL;
+	(void)this_val; (void)argc;
+
+	if (t->closed) return JS_UNDEFINED;
+	JS_ToInt32(ctx, &id, argv[0]);
+	method = JS_ToCString(ctx, argv[1]);
+	url = JS_ToCString(ctx, argv[2]);
+	base = (t->htmlc != NULL) ? t->htmlc->base_url : NULL;
+	if (method == NULL || url == NULL ||
+	    (base ? nsurl_join(base, url, &u) : nsurl_create(url, &u)) != NSERROR_OK ||
+	    (x = calloc(1, sizeof(*x))) == NULL) {
+		JSValue a[5] = { JS_NewInt32(ctx, id), JS_NewInt32(ctx, 0), JS_NewString(ctx, ""), JS_NewString(ctx, ""), JS_NewString(ctx, "") };
+		JS_FreeValue(ctx, eon_call_ns(t, "onHttp2", 5, a));
+		JS_FreeValue(ctx, a[2]); JS_FreeValue(ctx, a[3]); JS_FreeValue(ctx, a[4]);
+		if (u) nsurl_unref(u);
+		if (method) JS_FreeCString(ctx, method);
+		if (url) JS_FreeCString(ctx, url);
+		return JS_UNDEFINED;
+	}
+	x->thread = t;
+	x->id = id;
+	x->binary = JS_ToBool(ctx, argv[5]);
+	x->url = strdup(nsurl_access(u));
+	x->easy = curl_easy_init();
+
+	if (eon_multi == NULL) {
+		eon_multi = curl_multi_init();
+		curl_multi_setopt(eon_multi, CURLMOPT_MAX_HOST_CONNECTIONS, 6L);
+	}
+
+	curl_easy_setopt(x->easy, CURLOPT_URL, x->url);
+	curl_easy_setopt(x->easy, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(x->easy, CURLOPT_MAXREDIRS, 8L);
+	curl_easy_setopt(x->easy, CURLOPT_TIMEOUT, 60L);
+	curl_easy_setopt(x->easy, CURLOPT_NOSIGNAL, 1L);
+	curl_easy_setopt(x->easy, CURLOPT_ACCEPT_ENCODING, "");
+	curl_easy_setopt(x->easy, CURLOPT_USERAGENT, user_agent_string());
+	curl_easy_setopt(x->easy, CURLOPT_WRITEFUNCTION, eon_body_write);
+	curl_easy_setopt(x->easy, CURLOPT_WRITEDATA, x);
+	curl_easy_setopt(x->easy, CURLOPT_HEADERFUNCTION, eon_head_write);
+	curl_easy_setopt(x->easy, CURLOPT_HEADERDATA, x);
+	if (nsoption_charp(ca_bundle) != NULL) {
+		curl_easy_setopt(x->easy, CURLOPT_CAINFO, nsoption_charp(ca_bundle));
+	}
+	if (base != NULL) {
+		curl_easy_setopt(x->easy, CURLOPT_REFERER, nsurl_access(base));
+	}
+	cookie = urldb_get_cookie(u, true);
+	if (cookie != NULL) {
+		curl_easy_setopt(x->easy, CURLOPT_COOKIE, cookie);
+	}
+
+	/* cabeceras: arreglo de "Nombre: valor" */
+	if (JS_IsArray(argv[3])) {
+		JSValue len = JS_GetPropertyStr(ctx, argv[3], "length");
+		JS_ToUint32(ctx, &n, len);
+		JS_FreeValue(ctx, len);
+		for (i = 0; i < n; i++) {
+			JSValue h = JS_GetPropertyUint32(ctx, argv[3], i);
+			const char *hs = JS_ToCString(ctx, h);
+			if (hs != NULL) {
+				x->hdrs = curl_slist_append(x->hdrs, hs);
+				JS_FreeCString(ctx, hs);
+			}
+			JS_FreeValue(ctx, h);
+		}
+	}
+	/* sin esto curl agrega "Expect: 100-continue" y algunos servidores tardan */
+	x->hdrs = curl_slist_append(x->hdrs, "Expect:");
+	curl_easy_setopt(x->easy, CURLOPT_HTTPHEADER, x->hdrs);
+
+	/* metodo y cuerpo (texto UTF-8 o ArrayBuffer) */
+	if (!JS_IsNull(argv[4]) && !JS_IsUndefined(argv[4])) {
+		size_t blen = 0;
+		uint8_t *ab = JS_GetArrayBuffer(ctx, &blen, argv[4]);
+		if (ab != NULL) {
+			x->post = malloc(blen ? blen : 1);
+			if (x->post) memcpy(x->post, ab, blen);
+			x->postlen = blen;
+		} else {
+			const char *b;
+			JS_FreeValue(ctx, JS_GetException(ctx)); /* no era ArrayBuffer */
+			b = JS_ToCStringLen(ctx, &blen, argv[4]);
+			if (b != NULL) {
+				x->post = malloc(blen ? blen : 1);
+				if (x->post) memcpy(x->post, b, blen);
+				x->postlen = blen;
+				JS_FreeCString(ctx, b);
+			}
+		}
+		curl_easy_setopt(x->easy, CURLOPT_POSTFIELDS, x->post);
+		curl_easy_setopt(x->easy, CURLOPT_POSTFIELDSIZE, (long)x->postlen);
+	}
+	if (strcmp(method, "HEAD") == 0) {
+		curl_easy_setopt(x->easy, CURLOPT_NOBODY, 1L);
+	} else if (strcmp(method, "GET") != 0 && !(strcmp(method, "POST") == 0 && x->post != NULL)) {
+		curl_easy_setopt(x->easy, CURLOPT_CUSTOMREQUEST, method);
+	}
+
+	x->next = eon_xfers;
+	eon_xfers = x;
+	curl_multi_add_handle(eon_multi, x->easy);
+	if (!eon_poll_scheduled) {
+		eon_poll_scheduled = true;
+		guit->misc->schedule(0, eon_fetch_poll, NULL);
+	}
+
+	free(cookie);
+	nsurl_unref(u);
+	JS_FreeCString(ctx, method);
+	JS_FreeCString(ctx, url);
+	return JS_UNDEFINED;
+}
+
+static JSValue ns_http_abort(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	struct jsthread *t = eon_thread(ctx);
+	int32_t id = 0;
+	eon_xfer *x;
+	(void)this_val; (void)argc;
+	JS_ToInt32(ctx, &id, argv[0]);
+	for (x = eon_xfers; x != NULL; x = x->next) {
+		if (x->thread == t && x->id == id) {
+			eon_xfer_unlink(x);
+			eon_xfer_free(x);
+			break;
+		}
+	}
+	return JS_UNDEFINED;
+}
+
+/* cancelar los pedidos de una pagina que se cierra */
+static void eon_abort_xfers(struct jsthread *t)
+{
+	eon_xfer **pp = &eon_xfers;
+	while (*pp != NULL) {
+		eon_xfer *x = *pp;
+		if (x->thread == t) {
+			*pp = x->next;
+			eon_xfer_free(x);
+		} else {
+			pp = &x->next;
+		}
+	}
+}
+
 /* ------------------------------------------------------------------ tabla __ns */
 
 static const JSCFunctionListEntry eon_ns_funcs[] = {
@@ -1478,6 +1778,8 @@ static const JSCFunctionListEntry eon_ns_funcs[] = {
 	JS_CFUNC_DEF("listen", 1, ns_listen),
 	JS_CFUNC_DEF("http", 4, ns_http),
 	JS_CFUNC_DEF("storage", 2, ns_storage),
+	JS_CFUNC_DEF("http2", 6, ns_http2),
+	JS_CFUNC_DEF("httpAbort", 1, ns_http_abort),
 };
 
 /* ------------------------------------------------------------------ js.h */
@@ -1608,6 +1910,7 @@ nserror js_closethread(jsthread *thread)
 	t->closed = true;
 	eon_cancel_timers(t);
 	eon_abort_requests(t);
+	eon_abort_xfers(t);
 	eon_unlisten(t);
 	return NSERROR_OK;
 }
@@ -1618,6 +1921,7 @@ static void eon_destroy_thread_now(struct jsthread *t)
 	t->closed = true;
 	eon_cancel_timers(t);
 	eon_abort_requests(t);
+	eon_abort_xfers(t);
 	eon_unlisten(t);
 	JS_FreeValue(t->ctx, t->keep);
 	JS_FreeValue(t->ctx, t->ns);

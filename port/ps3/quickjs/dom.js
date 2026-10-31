@@ -4088,11 +4088,56 @@ var sessionStorageObj = makeStorageProxy(new Storage(false));
 var pendingHttp = new Map();
 var nextHttpId = 1;
 
+/* EonFetch (__ns.http2): metodo, cabeceras y cuerpo reales. El cuerpo viaja
+ * como texto o ArrayBuffer; el Content-Type por defecto sigue al tipo de cuerpo. */
+function bodyForWire(body) {
+  if (body === null || body === undefined) return { data: null, type: null };
+  if (body instanceof FormData) return { data: body._toQuery(), type: 'application/x-www-form-urlencoded;charset=UTF-8' };
+  if (body instanceof URLSearchParams) return { data: body.toString(), type: 'application/x-www-form-urlencoded;charset=UTF-8' };
+  if (body instanceof Blob) return { data: body._text, type: body.type || null };
+  if (typeof body === 'string') return { data: body, type: 'text/plain;charset=UTF-8' };
+  if (body instanceof ArrayBuffer) return { data: body, type: null };
+  if (body && body.buffer instanceof ArrayBuffer && body.byteLength !== undefined)
+    return { data: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength), type: null };
+  return { data: String(body), type: 'text/plain;charset=UTF-8' };
+}
+function sendHTTP(id, method, url, headerPairs, body, binary) {
+  if (typeof ns.http2 !== 'function') {
+    ns.http(id, String(method), String(url), body === null || body === undefined ? null : bodyToString(body));
+    return;
+  }
+  var w = bodyForWire(body), lines = [], hasType = false;
+  (headerPairs || []).forEach(function (h) {
+    var k = String(h[0]);
+    if (k.toLowerCase() === 'content-type') hasType = true;
+    /* el navegador pone estas solo */
+    if (/^(host|content-length|connection|cookie|user-agent|accept-encoding)$/i.test(k)) return;
+    lines.push(k + ': ' + String(h[1]));
+  });
+  if (w.data !== null && !hasType && w.type) lines.push('Content-Type: ' + w.type);
+  ns.http2(id, String(method), String(url), lines, w.data, !!binary);
+}
+/* cabeceras crudas de la respuesta -> { statusText, list: [[nombre, valor]] } */
+function parseRawHeaders(raw) {
+  var out = { statusText: '', list: [] };
+  String(raw || '').split(/\r?\n/).forEach(function (l) {
+    if (/^HTTP\//.test(l)) {
+      var m = /^HTTP\/\S+\s+\d+\s*(.*)$/.exec(l);
+      out.statusText = m ? m[1].trim() : '';
+      out.list = [];
+      return;
+    }
+    var k = l.indexOf(':');
+    if (k > 0) out.list.push([l.slice(0, k).trim().toLowerCase(), l.slice(k + 1).trim()]);
+  });
+  return out;
+}
+
 function requestHTTP(method, url, body, cb) {
   var id = nextHttpId++;
   pendingHttp.set(id, cb);
   try {
-    ns.http(id, String(method), String(url), body === null || body === undefined ? null : String(body));
+    sendHTTP(id, method, url, [], body, false);
   } catch (_) {
     pendingHttp.delete(id);
     setTimeout(function () { cb(0, '', ''); }, 0);
@@ -4363,6 +4408,7 @@ class Request {
     this.body = null;
     this._bodyUsed = false;
     var b = init.body !== undefined ? init.body : (src ? src._body : null);
+    this._rawBody = b === null || b === undefined ? null : b;
     this._body = b === null || b === undefined ? null : bodyToString(b);
   }
   get url() { return this._url; }
@@ -4457,10 +4503,15 @@ class XMLHttpRequest extends EventTarget {
   overrideMimeType(mime) { this._overrideMime = String(mime); }
   getResponseHeader(name) {
     var k = String(name).toLowerCase();
+    if (this._respHeaders) {
+      var v = this._respHeaders.filter(function (h) { return h[0] === k; }).map(function (h) { return h[1]; });
+      return v.length ? v.join(', ') : null;
+    }
     if (k === 'content-type') return this._contentType || null;
     return null;
   }
   getAllResponseHeaders() {
+    if (this._respHeaders) return this._respHeaders.map(function (h) { return h[0] + ': ' + h[1] + '\r\n'; }).join('');
     if (!this._contentType) return '';
     return 'content-type: ' + this._contentType + '\r\n';
   }
@@ -4470,6 +4521,10 @@ class XMLHttpRequest extends EventTarget {
       this.response = text;
     } else if (rt === 'json') {
       try { this.response = JSON.parse(text); } catch (_) { this.response = null; }
+    } else if (rt === 'arraybuffer' && text instanceof ArrayBuffer) {
+      this.response = text;
+    } else if (rt === 'blob' && text instanceof ArrayBuffer) {
+      this.response = new Blob([new TextDecoder().decode(new Uint8Array(text))], { type: this._contentType });
     } else if (rt === 'arraybuffer') {
       var u = new TextEncoder().encode(text);
       this.response = u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
@@ -4481,14 +4536,29 @@ class XMLHttpRequest extends EventTarget {
       this.response = text;
     }
   }
-  _onDone(status, text, type) {
+  _onDone(status, text, type, ph, finalUrl) {
     if (this._aborted || this._done) return;
     this._done = true;
     if (this._timeoutTimer) { clearTimeout(this._timeoutTimer); this._timeoutTimer = 0; }
     this.status = status;
-    this.statusText = status === 200 ? 'OK' : (status ? String(status) : '');
+    this._respHeaders = ph ? ph.list : null;
+    this.statusText = ph && ph.statusText ? ph.statusText : (status === 200 ? 'OK' : (status ? String(status) : ''));
     this._contentType = this._overrideMime || type || '';
-    this.responseURL = this._url;
+    this.responseURL = finalUrl || this._url;
+    if (text instanceof ArrayBuffer) {
+      /* respuesta binaria: responseText no aplica */
+      this.readyState = 2;
+      this._fire('readystatechange');
+      this.readyState = 3;
+      this._fire('readystatechange');
+      this._fire('progress', { lengthComputable: true, loaded: text.byteLength, total: text.byteLength });
+      this._computeResponse(text);
+      this.readyState = 4;
+      this._fire('readystatechange');
+      this._fire(status ? 'load' : 'error');
+      this._fire('loadend');
+      return;
+    }
     this.readyState = 2;
     this._fire('readystatechange');
     this.responseText = text;
@@ -4506,11 +4576,13 @@ class XMLHttpRequest extends EventTarget {
     if (this.readyState !== 1) throw new DOMException('XMLHttpRequest: not opened', 'InvalidStateError');
     this._aborted = false;
     this._done = false;
-    var b = (this._method === 'GET' || this._method === 'HEAD') ? null : bodyToString(body);
+    var b = (this._method === 'GET' || this._method === 'HEAD') ? null : body;
+    var hp = Object.keys(this._headers).map(function (k) { return [k, this._headers[k]]; }, this);
+    var binary = this.responseType === 'arraybuffer' || this.responseType === 'blob';
     var self = this;
     var id = nextHttpId++;
     this._id = id;
-    pendingHttp.set(id, function (status, text, type) { self._onDone(status, text, type); });
+    pendingHttp.set(id, function (status, text, type, ph, finalUrl) { self._onDone(status, text, type, ph, finalUrl); });
     if (this.timeout > 0) {
       this._timeoutTimer = setTimeout(function () {
         if (self._done || self._aborted) return;
@@ -4523,7 +4595,7 @@ class XMLHttpRequest extends EventTarget {
         self._fire('loadend');
       }, this.timeout);
     }
-    try { ns.http(id, this._method, this._url, b); }
+    try { sendHTTP(id, this._method, this._url, hp, b, binary); }
     catch (_) {
       pendingHttp.delete(id);
       setTimeout(function () { self._onDone(0, '', ''); }, 0);
@@ -4532,7 +4604,7 @@ class XMLHttpRequest extends EventTarget {
   abort() {
     if (this._aborted) return;
     this._aborted = true;
-    if (this._id) { pendingHttp.delete(this._id); this._id = 0; }
+    if (this._id) { pendingHttp.delete(this._id); try { if (ns.httpAbort) ns.httpAbort(this._id); } catch (_) {} this._id = 0; }
     if (this._timeoutTimer) { clearTimeout(this._timeoutTimer); this._timeoutTimer = 0; }
     var was = this.readyState;
     this.readyState = 0;
@@ -4581,25 +4653,31 @@ function fetch(input, init) {
       reject(new DOMException('Aborted', 'AbortError'));
     }
     if (signal) addListener(signal, 'abort', onAbort, false);
-    var body = (req.method === 'GET' || req.method === 'HEAD') ? null : req._body;
+    var body = (req.method === 'GET' || req.method === 'HEAD') ? null : req._rawBody;
+    var hp = [];
+    try { req.headers.forEach(function (v, k) { hp.push([k, v]); }); } catch (_) {}
     var id = nextHttpId++;
-    pendingHttp.set(id, function (status, text, type) {
+    if (signal) addListener(signal, 'abort', function () { try { if (ns.httpAbort) ns.httpAbort(id); } catch (_) {} }, false);
+    pendingHttp.set(id, function (status, text, type, ph, finalUrl) {
       pendingHttp.delete(id);
       if (signal) removeListener(signal, 'abort', onAbort, false);
       if (settled) return;
       settled = true;
       if (!status) { reject(new TypeError('Failed to fetch')); return; }
       var h = new Headers();
-      if (type) h.set('content-type', type);
-      resolve(new Response(text, {
+      if (ph) ph.list.forEach(function (x) { try { h.append(x[0], x[1]); } catch (_) {} });
+      else if (type) h.set('content-type', type);
+      var res = new Response(text, {
         status: status,
-        statusText: status === 200 ? 'OK' : '',
+        statusText: ph && ph.statusText ? ph.statusText : (status === 200 ? 'OK' : ''),
         headers: h,
-        url: req.url
-      }));
+        url: finalUrl || req.url
+      });
+      try { Object.defineProperty(res, 'redirected', { value: !!finalUrl && finalUrl !== req.url }); } catch (_) {}
+      resolve(res);
     });
     try {
-      ns.http(id, req.method, req.url, body);
+      sendHTTP(id, req.method, req.url, hp, body, false);
     } catch (_) {
       pendingHttp.delete(id);
       if (signal) removeListener(signal, 'abort', onAbort, false);
@@ -5291,6 +5369,17 @@ hook('onNewElement', function (el) {
   if (def && !ceDone.has(el)) ceUpgrade(el, def);
 });
 
+hook('onHttp2', function (id, status, body, raw, finalUrl) {
+  id = Number(id);
+  var cb = pendingHttp.get(id);
+  if (!cb) return;
+  pendingHttp['delete'](id);
+  var ph = parseRawHeaders(raw), ct = '';
+  ph.list.forEach(function (h) { if (h[0] === 'content-type') ct = h[1]; });
+  try { cb(Number(status) || 0, body === null || body === undefined ? '' : body, ct, ph, String(finalUrl || '')); }
+  catch (e) { log('onHttp2 ' + id + ': ' + errText(e)); }
+});
+
 hook('onHttp', function (id, status, text, type) {
   id = Number(id);
   var cb = pendingHttp.get(id);
@@ -5430,6 +5519,284 @@ try {
     configurable: true
   });
 } catch (_) {}
+
+/* ---------------------------------------------------------------- CSSOM */
+/* style.sheet / insertRule / cssRules / document.styleSheets.
+ * emotion, styled-components y otras librerias de CSS-en-JS, en produccion,
+ * agregan las reglas con sheet.insertRule() en vez de escribir texto: sin esto
+ * sus estilos no se aplican nunca. Aca cada hoja esta atada a su <style>, y los
+ * cambios se vuelcan al texto del elemento (agrupados en una sola escritura
+ * por vuelta) para que NetSurf lo vuelva a leer. */
+
+/* parte un texto CSS en reglas de primer nivel */
+function cssSplitRules(text) {
+  var out = [], depth = 0, q = null, start = 0, i, c;
+  text = String(text || '');
+  for (i = 0; i < text.length; i++) {
+    c = text.charAt(i);
+    if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    if (c === '/' && text.charAt(i + 1) === '*') {
+      var e = text.indexOf('*/', i + 2);
+      i = e < 0 ? text.length : e + 1;
+      continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth <= 0) { depth = 0; var r = text.slice(start, i + 1).trim(); if (r) out.push(r); start = i + 1; }
+    } else if (c === ';' && depth === 0) {
+      var r2 = text.slice(start, i + 1).trim();
+      if (r2) out.push(r2);
+      start = i + 1;
+    }
+  }
+  var rest = text.slice(start).trim();
+  if (rest) out.push(rest);
+  return out;
+}
+
+class CSSRule {
+  constructor(text, sheet, parent) {
+    this._text = String(text);
+    this.parentStyleSheet = sheet || null;
+    this.parentRule = parent || null;
+  }
+  get cssText() { return this._text; }
+  set cssText(v) { /* solo lectura en la practica */ }
+  get type() { return this.constructor.TYPE || 0; }
+}
+CSSRule.STYLE_RULE = 1; CSSRule.IMPORT_RULE = 3; CSSRule.MEDIA_RULE = 4;
+CSSRule.FONT_FACE_RULE = 5; CSSRule.PAGE_RULE = 6; CSSRule.KEYFRAMES_RULE = 7;
+CSSRule.KEYFRAME_RULE = 8; CSSRule.SUPPORTS_RULE = 12;
+
+/* declaraciones de una regla como objeto parecido a CSSStyleDeclaration */
+function cssDeclObject(rule, body) {
+  var decls = [];
+  splitTopLevel(body, ';').forEach(function (d) {
+    var k = d.indexOf(':');
+    if (k > 0) decls.push([d.slice(0, k).trim().toLowerCase(), d.slice(k + 1).trim()]);
+  });
+  var o = {
+    get cssText() { return decls.map(function (d) { return d[0] + ': ' + d[1]; }).join('; '); },
+    get length() { return decls.length; },
+    item: function (i) { return decls[i] ? decls[i][0] : ''; },
+    getPropertyValue: function (n) {
+      n = String(n).toLowerCase();
+      for (var i = decls.length - 1; i >= 0; i--) if (decls[i][0] === n) return decls[i][1].replace(/\s*!important\s*$/i, '');
+      return '';
+    },
+    getPropertyPriority: function (n) { return /!important\s*$/i.test(o.getPropertyValue(n)) ? 'important' : ''; },
+    setProperty: function (n, v, pri) {
+      n = String(n).toLowerCase();
+      v = String(v) + (pri === 'important' ? ' !important' : '');
+      for (var i = 0; i < decls.length; i++) if (decls[i][0] === n) { decls[i][1] = v; rule._rebuild(o.cssText); return; }
+      decls.push([n, v]);
+      rule._rebuild(o.cssText);
+    },
+    removeProperty: function (n) {
+      n = String(n).toLowerCase();
+      var old = o.getPropertyValue(n);
+      decls = decls.filter(function (d) { return d[0] !== n; });
+      rule._rebuild(o.cssText);
+      return old;
+    }
+  };
+  return new Proxy(o, {
+    get: function (t, p) {
+      if (typeof p !== 'string' || p in t) return t[p];
+      return t.getPropertyValue(p.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); }));
+    },
+    set: function (t, p, v) {
+      if (typeof p !== 'string' || p in t) { t[p] = v; return true; }
+      t.setProperty(p.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); }), v);
+      return true;
+    }
+  });
+}
+
+class CSSStyleRule extends CSSRule {
+  constructor(text, sheet, parent) {
+    super(text, sheet, parent);
+    var b = this._text.indexOf('{');
+    this.selectorText = b < 0 ? '' : this._text.slice(0, b).trim();
+    this.style = cssDeclObject(this, b < 0 ? '' : this._text.slice(b + 1, this._text.lastIndexOf('}')));
+  }
+  _rebuild(body) {
+    this._text = this.selectorText + ' { ' + body + ' }';
+    if (this.parentStyleSheet && this.parentStyleSheet._changed) this.parentStyleSheet._changed();
+  }
+}
+CSSStyleRule.TYPE = 1;
+
+class CSSGroupingRule extends CSSRule {
+  constructor(text, sheet, parent) {
+    super(text, sheet, parent);
+    var b = this._text.indexOf('{');
+    this._head = b < 0 ? this._text : this._text.slice(0, b).trim();
+    var inner = b < 0 ? '' : this._text.slice(b + 1, this._text.lastIndexOf('}'));
+    var self = this;
+    this.cssRules = cssSplitRules(inner).map(function (r) { return makeCSSRule(r, sheet, self); });
+  }
+  get cssText() {
+    return this._head + ' { ' + this.cssRules.map(function (r) { return r.cssText; }).join(' ') + ' }';
+  }
+  insertRule(rule, index) {
+    index = index === undefined ? 0 : index;
+    this.cssRules.splice(index, 0, makeCSSRule(rule, this.parentStyleSheet, this));
+    if (this.parentStyleSheet && this.parentStyleSheet._changed) this.parentStyleSheet._changed();
+    return index;
+  }
+  deleteRule(index) {
+    this.cssRules.splice(index, 1);
+    if (this.parentStyleSheet && this.parentStyleSheet._changed) this.parentStyleSheet._changed();
+  }
+}
+class CSSMediaRule extends CSSGroupingRule {
+  get media() {
+    var m = this._head.replace(/^@media\s*/i, '');
+    return { mediaText: m, length: 1, item: function () { return m; }, toString: function () { return m; } };
+  }
+  get conditionText() { return this._head.replace(/^@media\s*/i, ''); }
+}
+CSSMediaRule.TYPE = 4;
+class CSSSupportsRule extends CSSGroupingRule {
+  get conditionText() { return this._head.replace(/^@supports\s*/i, ''); }
+}
+CSSSupportsRule.TYPE = 12;
+class CSSFontFaceRule extends CSSStyleRule {}
+CSSFontFaceRule.TYPE = 5;
+class CSSKeyframesRule extends CSSGroupingRule {
+  get name() { return this._head.replace(/^@(-webkit-)?keyframes\s*/i, ''); }
+}
+CSSKeyframesRule.TYPE = 7;
+class CSSImportRule extends CSSRule {
+  get href() { var m = /url\(\s*['"]?([^'")]+)|['"]([^'"]+)['"]/.exec(this._text); return m ? (m[1] || m[2]) : ''; }
+}
+CSSImportRule.TYPE = 3;
+
+function makeCSSRule(text, sheet, parent) {
+  var t = String(text).trim();
+  if (/^@media/i.test(t)) return new CSSMediaRule(t, sheet, parent);
+  if (/^@supports/i.test(t) || /^@layer/i.test(t) || /^@container/i.test(t)) return new CSSSupportsRule(t, sheet, parent);
+  if (/^@font-face/i.test(t)) return new CSSFontFaceRule(t, sheet, parent);
+  if (/^@(-webkit-)?keyframes/i.test(t)) return new CSSKeyframesRule(t, sheet, parent);
+  if (/^@import/i.test(t)) return new CSSImportRule(t, sheet, parent);
+  return new CSSStyleRule(t, sheet, parent);
+}
+
+/* hoja atada a un <style> (o vacia para un <link>) */
+var sheetOf = new WeakMap();
+var dirtySheets = new Set();
+function flushSheets() {
+  dirtySheets.forEach(function (sh) {
+    var text = sh.cssRules.map(function (r) { return r.cssText; }).join('\n');
+    sh._written = text;
+    if (sh.ownerNode && ns.text(sh.ownerNode) !== text) ns.setText(sh.ownerNode, text);
+  });
+  dirtySheets.clear();
+}
+
+class EonElementSheet extends CSSStyleSheet {
+  constructor(node, readOnlyLink) {
+    super({});
+    this.ownerNode = node;
+    this.type = 'text/css';
+    this._link = !!readOnlyLink;
+    this._written = null;
+    this._rules = [];
+    this._sync();
+  }
+  _sync() {
+    if (this._link) return;
+    var t = ns.text(this.ownerNode) || '';
+    if (t !== this._written) {
+      var self = this;
+      this._rules = cssSplitRules(t).map(function (r) { return makeCSSRule(r, self, null); });
+      this._written = t;
+    }
+  }
+  _changed() {
+    if (this._link) return;
+    if (!dirtySheets.size) queueMicrotaskFn(flushSheets);
+    dirtySheets.add(this);
+  }
+  get cssRules() { if (!dirtySheets.has(this)) this._sync(); return this._rules; }
+  set cssRules(v) { /* CSSStyleSheet del padre lo asigna al construir */ }
+  get rules() { return this.cssRules; }
+  get href() { return this._link ? (this.ownerNode.href || null) : null; }
+  get title() { return ns.getAttr(this.ownerNode, 'title'); }
+  get media() {
+    var m = ns.getAttr(this.ownerNode, 'media') || '';
+    return { mediaText: m, length: m ? 1 : 0, item: function () { return m; }, toString: function () { return m; } };
+  }
+  set media(v) { /* la clase base lo asigna al construir */ }
+  get disabled() { return false; }
+  set disabled(v) {}
+  insertRule(rule, index) {
+    var rules = this.cssRules;
+    index = index === undefined ? 0 : Number(index);
+    if (index < 0 || index > rules.length) throw new DOMException('insertRule: indice fuera de rango', 'IndexSizeError');
+    rules.splice(index, 0, makeCSSRule(rule, this, null));
+    this._changed();
+    return index;
+  }
+  deleteRule(index) {
+    var rules = this.cssRules;
+    if (index < 0 || index >= rules.length) throw new DOMException('deleteRule: indice fuera de rango', 'IndexSizeError');
+    rules.splice(index, 1);
+    this._changed();
+  }
+  addRule(sel, body, index) {
+    return this.insertRule(sel + ' { ' + body + ' }', index === undefined ? this.cssRules.length : index);
+  }
+  removeRule(index) { this.deleteRule(index === undefined ? 0 : index); }
+  replaceSync(text) { ns.setText(this.ownerNode, String(text)); this._sync(); }
+  replace(text) { this.replaceSync(text); return Promise.resolve(this); }
+}
+
+function sheetFor(node, isLink) {
+  var sh = sheetOf.get(node);
+  if (!sh) { sh = new EonElementSheet(node, isLink); sheetOf.set(node, sh); }
+  return sh;
+}
+try {
+  Object.defineProperty(HTMLStyleElement.prototype, 'sheet', {
+    get: function () { return ceConnected(this) ? sheetFor(this, false) : null; }, configurable: true
+  });
+  Object.defineProperty(HTMLLinkElement.prototype, 'sheet', {
+    get: function () {
+      return /(^|\s)stylesheet(\s|$)/i.test(ns.getAttr(this, 'rel') || '') && ceConnected(this) ? sheetFor(this, true) : null;
+    }, configurable: true
+  });
+  Object.defineProperty(Document.prototype, 'styleSheets', {
+    get: function () {
+      var list = byTagAll(this, '*').filter(function (el) {
+        var n = ns.name(el);
+        return n === 'STYLE' || (n === 'LINK' && /(^|\s)stylesheet(\s|$)/i.test(ns.getAttr(el, 'rel') || ''));
+      }).map(function (el) { return el.sheet; }).filter(Boolean);
+      list.item = function (i) { return this[i] || null; };
+      return list;
+    }, configurable: true
+  });
+} catch (e) { log('CSSOM: ' + errText(e)); }
+defGlobal('CSSRule', CSSRule);
+defGlobal('CSSStyleRule', CSSStyleRule);
+defGlobal('CSSGroupingRule', CSSGroupingRule);
+defGlobal('CSSMediaRule', CSSMediaRule);
+defGlobal('CSSSupportsRule', CSSSupportsRule);
+defGlobal('CSSFontFaceRule', CSSFontFaceRule);
+defGlobal('CSSKeyframesRule', CSSKeyframesRule);
+defGlobal('CSSImportRule', CSSImportRule);
+defGlobal('StyleSheet', CSSStyleSheet);
+defGlobal('CSS', Object.assign(G.CSS || {}, {
+  supports: function (a, b) {
+    /* lo que el traductor de EonSurf entiende cuenta como soportado */
+    var t = (b === undefined ? String(a) : String(a) + ':' + String(b)).toLowerCase();
+    return !/(subgrid|container-type|:has\(|backdrop-filter|mask-image|clip-path|anchor-name)/.test(t);
+  },
+  escape: function (s) { return String(s).replace(/([^\w-])/g, '\\$1').replace(/^(\d)/, '\\3$1 '); }
+}));
 
 /* Navigation Timing (YouTube y medidores de rendimiento lo leen al arrancar) */
 var navEntry = {
