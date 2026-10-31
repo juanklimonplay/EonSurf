@@ -107,6 +107,7 @@ static void eon_relayout_done(html_content *c, bool success)
 	c->focus_owner.self = true;
 
 	eon_relayout_free_old(c);
+	NSLOG(netsurf, INFO, "EonSurf: live relayout done");
 
 	content__reformat(&c->base, false,
 			  c->base.available_width, c->base.available_height);
@@ -148,6 +149,7 @@ static void eon_relayout_run(void *p)
 	c->object_list = NULL;
 	c->num_objects = 0;
 
+	NSLOG(netsurf, INFO, "EonSurf: live relayout start");
 	err = dom_to_box(html, c, eon_relayout_done,
 			 &c->box_conversion_context);
 	dom_node_unref(html);

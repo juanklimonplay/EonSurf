@@ -929,9 +929,12 @@ static void eon_timer_fire(void *p)
 		}
 	}
 	if (eon_enter(t)) {
+		uint64_t t0 = eon_now_ms();
 		arg = JS_NewInt32(t->ctx, tm->id);
 		JS_FreeValue(t->ctx, eon_call_ns(t, "onTimer", 1, &arg));
 		eon_leave(t);
+		if (eon_now_ms() - t0 > 50)
+			NSLOG(netsurf, INFO, "EonSurf: timer took %u ms", (unsigned)(eon_now_ms() - t0));
 	}
 	free(tm);
 }
@@ -1635,6 +1638,7 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	bool ok;
 	char *buf;
 
+	uint64_t t0 = eon_now_ms();
 	if (txt == NULL || txtlen == 0 || !eon_enter(t)) {
 		return false;
 	}
@@ -1679,6 +1683,7 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	}
 	JS_FreeValue(t->ctx, r);
 	eon_leave(t);
+	NSLOG(netsurf, INFO, "EonSurf: js_exec took %u ms", (unsigned)(eon_now_ms() - t0));
 	return ok;
 }
 

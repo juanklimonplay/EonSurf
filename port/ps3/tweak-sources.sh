@@ -200,3 +200,6 @@ CSS
 
 # Variables CSS (var(--x)): preprocesador antes de libcss
 python3 ../../ps3/css/patch-css.py
+
+# Red mas rapida: sesiones TLS compartidas y mas conexiones reutilizadas
+python3 ../../ps3/net/patch-net.py
