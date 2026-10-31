@@ -61,3 +61,13 @@ de 30 s, y un crash arreglado (pedidos de red liberados dos veces).
 
 Próximo: errores internos de los componentes de YouTube (ahora el registro muestra el mensaje),
 CSS grid y posicionamiento (modales que deberían flotar), y velocidad (callbacks de 30 s en reddit).
+
+## Transform y velocidad (31-10-2026)
+
+- Red: más conexiones reutilizadas y DNS compartido: MercadoLibre de 74 s a 44 s.
+- Transform: modal centrado y `transform` desde JS verificados en RPCS3 (página de prueba).
+- **Problema abierto:** después de esos cambios MercadoLibre queda en blanco más de 5 minutos.
+  La página se arma (DOM a cajas listo a los 56 s), pero después hay pausas de 4 a 18 s sin registro:
+  NetSurf recalcula el diseño completo cada vez que llega una imagen, y en el PPU cada recálculo de
+  una página grande cuesta segundos. Desactivar transform (CSS y JS) no lo cambió. Próximo paso:
+  medir el tiempo de cada recálculo (layout), y agrupar los recálculos mientras llegan imágenes.
