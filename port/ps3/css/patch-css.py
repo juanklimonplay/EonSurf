@@ -60,3 +60,6 @@ print('EonSurf: variables CSS')
 # flex con gap y justify-content
 import runpy
 runpy.run_path(os.path.join(here, 'patch-flex.py'))
+
+# colores con alfa en los rectangulos (libnsfb)
+runpy.run_path(os.path.join(here, 'patch-alpha.py'))
