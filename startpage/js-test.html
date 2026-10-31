@@ -10,11 +10,14 @@ li { font-size: 16px; margin: 3px 0; }
 h1 { margin: 0; }
 .ok { color: #3ddc84; }
 .no { color: #ff5c5c; }
+:root { --eon-ok: #3ddc84; --eon-tam: 22px; }
+#cssvar { color: var(--eon-ok); font-size: var(--eon-tam); border-left: 6px solid var(--eon-nada, #00c8ff); padding-left: 8px; }
 </style>
 </head>
 <body>
 <h1>Prueba de JavaScript</h1>
 <p id="estado">JavaScript NO se ejecutó.</p>
+<p id="cssvar">Variables CSS: este texto tiene que ser verde, grande y con borde celeste</p>
 <p id="reloj" style="font-size:28px;color:#00c8ff">Contador: esperando...</p>
 <ul id="lista"></ul>
 <script>
@@ -71,6 +74,30 @@ if (typeof MutationObserver === 'function') {
 	var mo = new MutationObserver(function (recs) { prueba('MutationObserver (llegó ' + recs.length + ')', function () { return recs.length > 0; }); mo.disconnect(); });
 	mo.observe(lista, { childList: true });
 }
+prueba('customElements', function () {
+	if (typeof __ns !== 'object') return false;
+	class EonSaludo extends HTMLElement {
+		static get observedAttributes() { return ['nombre']; }
+		connectedCallback() { this.textContent = 'hola ' + (this.getAttribute('nombre') || ''); }
+		attributeChangedCallback(n, a, b) { if (this.isConnected) this.textContent = 'hola ' + b; }
+	}
+	customElements.define('eon-saludo', EonSaludo);
+	var e = document.createElement('eon-saludo');
+	e.setAttribute('nombre', 'PS3');
+	document.body.appendChild(e);
+	var ok = e instanceof EonSaludo && e.textContent === 'hola PS3';
+	e.setAttribute('nombre', 'Cell');
+	ok = ok && e.textContent === 'hola Cell';
+	document.body.removeChild(e);
+	return ok;
+});
+prueba('Shadow DOM', function () {
+	var h = document.createElement('div');
+	var sr = h.attachShadow({ mode: 'open' });
+	sr.innerHTML = '<b>sombra</b>';
+	return h.shadowRoot === sr && h.textContent === 'sombra';
+});
+prueba('Intl', function () { return typeof Intl === 'object' && new Intl.NumberFormat('es-AR').format(1234.5) === '1.234,5'; });
 var n = 0;
 setInterval(function () {
 	n++;

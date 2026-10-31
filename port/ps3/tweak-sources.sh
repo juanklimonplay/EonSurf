@@ -177,11 +177,26 @@ python3 ../../ps3/patch-js.py
 if [ "${EONSURF_JS:-quickjs}" = quickjs ]; then
   Q=netsurf/content/handlers/javascript/quickjs
   mkdir -p $Q
-  cp ../../ps3/quickjs/eon_qjs.c ../../ps3/quickjs/dom.js $Q/
+  cp ../../ps3/quickjs/eon_qjs.c ../../ps3/quickjs/dom.js ../../ps3/quickjs/intl.js $Q/
   cp ../../ps3/quickjs/Makefile.netsurf $Q/Makefile
+  python3 ../../ps3/quickjs/patch-netsurf.py
   sed -i 's#^ifeq ($(NETSURF_USE_DUKTAPE),YES)#ifeq ($(NETSURF_USE_QUICKJS),YES)\ninclude content/handlers/javascript/quickjs/Makefile\nelse ifeq ($(NETSURF_USE_DUKTAPE),YES)#' netsurf/content/handlers/javascript/Makefile
   printf 'override NETSURF_USE_QUICKJS := YES\noverride NETSURF_USE_DUKTAPE := NO\n' >> netsurf/Makefile.config
   sed -i 's/-Wl,--start-group -lrsx /-Wl,--start-group -lqjs -lrsx /' netsurf/frontends/framebuffer/Makefile
   grep -n "QUICKJS" netsurf/content/handlers/javascript/Makefile
   grep -n "lqjs" netsurf/frontends/framebuffer/Makefile
 fi
+
+# HTML5 en el CSS base: NetSurf 3.11 no oculta [hidden], <template> ni los
+# <dialog>/<details> cerrados (GitHub, YouTube y otros los usan para todo)
+cat >> netsurf/resources/default.css <<'CSS'
+
+/* EonSurf: reglas HTML5 que faltan */
+[hidden], template, slot, dialog:not([open]), noscript { display: none; }
+details:not([open]) > :not(summary) { display: none; }
+main, article, aside, nav, section, header, footer, figure, figcaption, hgroup, search { display: block; }
+dialog[open] { display: block; position: absolute; left: 0; right: 0; margin: auto; border: solid; padding: 1em; background: white; color: black; }
+CSS
+
+# Variables CSS (var(--x)): preprocesador antes de libcss
+python3 ../../ps3/css/patch-css.py

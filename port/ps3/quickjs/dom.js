@@ -1348,8 +1348,22 @@ class Element extends Node {
       return;
     }
   }
-  attachShadow() { return ns.createFragment(); }
-  get shadowRoot() { return null; }
+  attachShadow(init) {
+    /* Shadow DOM aplanado: la raiz es un elemento real dentro del anfitrion,
+     * asi NetSurf dibuja su contenido. */
+    var sr = ns.createElement('eon-shadow-root');
+    ns.insert(this, sr, ns.first(this));
+    sr.host = this;
+    sr.mode = (init && init.mode) || 'open';
+    sr.delegatesFocus = !!(init && init.delegatesFocus);
+    sr.adoptedStyleSheets = [];
+    shadowRoots.set(this, sr);
+    return sr;
+  }
+  get shadowRoot() {
+    var sr = shadowRoots.get(this);
+    return sr && sr.mode === 'open' ? sr : null;
+  }
   get slot() { return ns.getAttr(this, 'slot') || ''; }
   get part() { return ns.getAttr(this, 'part') || ''; }
   get assignedSlot() { return null; }
@@ -1687,7 +1701,17 @@ function reflectURL(proto, prop, attr) {
 /* ---------------------------------------------------------------- HTMLElement */
 
 class HTMLElement extends Element {
-  constructor() { throw new TypeError('Illegal constructor'); }
+  constructor() {
+    /* "mejora" de un elemento que ya existe (customElements.define / parser) */
+    if (ceUpgrading) { var up = ceUpgrading; ceUpgrading = null; return up; }
+    /* new MiElemento() o document.createElement('mi-elemento') */
+    var def = ceByCtor.get(new.target);
+    if (!def) throw new TypeError('Illegal constructor');
+    var el = ns.createElement(def.name);
+    Object.setPrototypeOf(el, new.target.prototype);
+    ceDone.add(el);
+    return el;
+  }
 
   get style() {
     var s = styleCache.get(this);
@@ -3044,8 +3068,28 @@ function matchesSelector(e, sel) {
   return false;
 }
 
+/* Candidatos segun la ultima parte del selector: #id o etiqueta evitan
+ * recorrer toda la pagina (en el PPU eso tarda segundos en sitios grandes) */
+function qsaCandidates(root, sel) {
+  var groups;
+  try { groups = parseSelector(sel); } catch (_) { return null; }
+  if (groups.length !== 1 || !groups[0].length) return byTagAll(root, '*');
+  var last = groups[0][groups[0].length - 1].simple, tag = null;
+  for (var i = 0; i < last.length; i++) {
+    if (last[i].t === 'id') {
+      var el = ns.byId(last[i].v);
+      if (!el) return [];
+      if (root === getDocument() || ns.type(root) === DOCUMENT_NODE) return [el];
+      for (var p = ns.parent(el); p; p = ns.parent(p)) if (p === root) return [el];
+      return [];
+    }
+    if (last[i].t === 'tag') tag = last[i].v;
+  }
+  return byTagAll(root, tag ? tag.toLowerCase() : '*');
+}
+
 function qsa(root, sel, one) {
-  var all = byTagAll(root, '*'), out = [];
+  var all = qsaCandidates(root, sel) || [], out = [];
   for (var i = 0; i < all.length; i++) {
     if (matchesSelector(all[i], sel)) {
       if (one) return all[i];
@@ -4593,31 +4637,151 @@ defineTag(ResizeObserver.prototype, 'ResizeObserver');
 
 /* ---------------------------------------------------------------- customElements */
 
+/* ---------------------------------------------------------------- customElements */
+/* Elementos personalizados de verdad: define() mejora los que ya existen,
+ * el parser y las inserciones llaman connectedCallback y compania. */
+
+var shadowRoots = new WeakMap();
+var ceDefs = new Map();      /* nombre -> {name, ctor, observed} */
+var ceByCtor = new Map();    /* constructor -> definicion */
+var ceDone = new WeakSet();  /* elementos ya construidos */
+var ceUpgrading = null;
+var ceWaiting = new Map();
+
+function ceDefFor(el) {
+  if (!ceDefs.size || ns.type(el) !== ELEMENT_NODE) return null;
+  var n = ns.name(el).toLowerCase();
+  return n.indexOf('-') > 0 ? ceDefs.get(n) || null : null;
+}
+function ceCall(el, cb, args) {
+  if (typeof el[cb] !== 'function') return;
+  try { el[cb].apply(el, args || []); } catch (e) { log(cb + ': ' + errText(e)); }
+}
+function ceConnected(el) {
+  for (var n = el; n; n = ns.parent(n)) if (ns.type(n) === DOCUMENT_NODE) return true;
+  return false;
+}
+function ceUpgrade(el, def) {
+  def = def || ceDefFor(el);
+  if (!def || ceDone.has(el)) return;
+  ceDone.add(el);
+  Object.setPrototypeOf(el, def.ctor.prototype);
+  ceUpgrading = el;
+  try { new def.ctor(); } catch (e) { log('custom element ' + def.name + ': ' + errText(e)); }
+  ceUpgrading = null;
+  def.observed.forEach(function (a) {
+    var v = ns.getAttr(el, a);
+    if (v !== null) ceCall(el, 'attributeChangedCallback', [a, null, v]);
+  });
+  if (ceConnected(el)) ceCall(el, 'connectedCallback');
+}
+/* despues de insertar: mejorar y conectar los elementos personalizados del subarbol */
+function ceInserted(node) {
+  if (!ceDefs.size || !node) return;
+  var t = ns.type(node);
+  if (t !== ELEMENT_NODE || !ceConnected(node)) return;
+  [node].concat(ns.byTag(node, '*')).forEach(function (el) {
+    var def = ceDefFor(el);
+    if (!def) return;
+    if (!ceDone.has(el)) ceUpgrade(el, def);
+    else ceCall(el, 'connectedCallback');
+  });
+}
+function ceRemoved(node) {
+  if (!ceDefs.size || !node || ns.type(node) !== ELEMENT_NODE) return;
+  [node].concat(ns.byTag(node, '*')).forEach(function (el) {
+    if (ceDone.has(el) && ceDefFor(el)) ceCall(el, 'disconnectedCallback');
+  });
+}
+function ceAttr(el, name, oldV, newV) {
+  var def = ceDone.has(el) ? ceDefFor(el) : null;
+  if (def && def.observed.indexOf(name) >= 0 && oldV !== newV) {
+    ceCall(el, 'attributeChangedCallback', [name, oldV, newV]);
+  }
+}
+
+/* Envolver las primitivas del C: todo lo que inserta, saca o cambia atributos
+ * (appendChild, innerHTML, append, setAttribute...) pasa por aca. */
+(function () {
+  var A = ns.append, I = ns.insert, R = ns.remove, P = ns.replace, H = ns.setInnerHTML,
+      S = ns.setAttr, D = ns.removeAttr;
+  function kidsIfFragment(c) {
+    return ceDefs.size && ns.type(c) === DOCUMENT_FRAGMENT_NODE ? ns.children(c) : null;
+  }
+  ns.append = function (p, c) {
+    var frag = kidsIfFragment(c);
+    var r = A(p, c);
+    if (ceDefs.size) { if (frag) frag.forEach(ceInserted); else ceInserted(c); }
+    return r;
+  };
+  ns.insert = function (p, c, ref) {
+    var frag = kidsIfFragment(c);
+    var r = I(p, c, ref);
+    if (ceDefs.size) { if (frag) frag.forEach(ceInserted); else ceInserted(c); }
+    return r;
+  };
+  ns.remove = function (p, c) {
+    var wasIn = ceDefs.size && ceConnected(p);
+    var r = R(p, c);
+    if (wasIn) ceRemoved(c);
+    return r;
+  };
+  ns.replace = function (p, nw, old) {
+    var wasIn = ceDefs.size && ceConnected(p);
+    var r = P(p, nw, old);
+    if (wasIn) ceRemoved(old);
+    if (ceDefs.size) ceInserted(nw);
+    return r;
+  };
+  ns.setInnerHTML = function (n, html) {
+    var r = H(n, html);
+    if (ceDefs.size) ns.children(n).forEach(ceInserted);
+    return r;
+  };
+  ns.setAttr = function (n, k, v) {
+    var old = ceDefs.size ? ns.getAttr(n, k) : null;
+    var r = S(n, k, v);
+    if (ceDefs.size) ceAttr(n, String(k), old, String(v));
+    return r;
+  };
+  ns.removeAttr = function (n, k) {
+    var old = ceDefs.size ? ns.getAttr(n, k) : null;
+    var r = D(n, k);
+    if (ceDefs.size) ceAttr(n, String(k), old, null);
+    return r;
+  };
+})();
+
 var customElementsObj = {
-  _defs: new Map(),
-  _pending: new Map(),
   define: function (name, ctor) {
-    name = String(name);
-    if (this._defs.has(name)) {
+    name = String(name).toLowerCase();
+    if (ceDefs.has(name)) {
       throw new DOMException('customElements: ya definido ' + name, 'NotSupportedError');
     }
-    this._defs.set(name, ctor);
-    var p = this._pending.get(name);
-    if (p) { p.resolve(ctor); this._pending['delete'](name); }
+    if (typeof ctor !== 'function') throw new TypeError('customElements.define: falta la clase');
+    var def = { name: name, ctor: ctor, observed: Array.from(ctor.observedAttributes || []).map(String) };
+    ceDefs.set(name, def);
+    ceByCtor.set(ctor, def);
+    var d = getDocument();
+    if (d) byTagAll(d, name).forEach(function (el) { ceUpgrade(el, def); });
+    var w = ceWaiting.get(name);
+    if (w) { w.resolve(ctor); ceWaiting['delete'](name); }
   },
-  get: function (name) { return this._defs.get(String(name)) || undefined; },
+  get: function (name) { var d = ceDefs.get(String(name).toLowerCase()); return d ? d.ctor : undefined; },
+  getName: function (ctor) { var d = ceByCtor.get(ctor); return d ? d.name : null; },
   whenDefined: function (name) {
-    name = String(name);
-    if (this._defs.has(name)) return Promise.resolve(this._defs.get(name));
-    if (!this._pending.has(name)) {
-      var resolveFn;
-      var promise = new Promise(function (r) { resolveFn = r; });
-      this._pending.set(name, { promise: promise, resolve: resolveFn });
+    name = String(name).toLowerCase();
+    if (ceDefs.has(name)) return Promise.resolve(ceDefs.get(name).ctor);
+    if (!ceWaiting.has(name)) {
+      var res;
+      var pr = new Promise(function (r) { res = r; });
+      ceWaiting.set(name, { promise: pr, resolve: res });
     }
-    return this._pending.get(name).promise;
+    return ceWaiting.get(name).promise;
   },
-  upgrade: function () {},
-  getName: function () { return null; }
+  upgrade: function (root) {
+    if (root) [root].concat(byTagAll(root, '*')).forEach(function (el) { ceUpgrade(el); });
+  }
 };
 
 /* ---------------------------------------------------------------- temporizadores */
@@ -4960,6 +5124,10 @@ function setupNode(obj, type, name) {
   if (type === ELEMENT_NODE) {
     var tag = String(name || '').toUpperCase();
     proto = TAG_PROTOTYPES[tag] || HTMLElement.prototype;
+    if (tag.indexOf('-') > 0 && ceDefs.size) {
+      var cdef = ceDefs.get(tag.toLowerCase());
+      if (cdef) proto = cdef.ctor.prototype;
+    }
   } else if (type === TEXT_NODE) {
     proto = Text.prototype;
   } else if (type === COMMENT_NODE) {
@@ -5076,6 +5244,8 @@ hook('onFire', function (type, target) {
 
 hook('onNewElement', function (el) {
   processInlineHandlers(el);
+  var def = ceDefFor(el);
+  if (def && !ceDone.has(el)) ceUpgrade(el, def);
 });
 
 hook('onHttp', function (id, status, text, type) {
@@ -5101,9 +5271,199 @@ hook('onClose', function () {
   try { localStorageObj._flush(); } catch (_) {}
 });
 
+/* ---------------------------------------------------------------- extras (prueba de sitios) */
+/* APIs que pidieron sitios reales: reCAPTCHA (MessageChannel, Worker),
+ * MercadoLibre (CSSStyleSheet), YouTube (CharacterData, performance.timing). */
+
+class MessagePort extends EventTarget {
+  constructor() { super(); this._other = null; this._onmessage = null; this._started = false; }
+  get onmessage() { return this._onmessage; }
+  set onmessage(fn) { this._onmessage = fn; this._started = true; }
+  postMessage(data) {
+    var to = this._other;
+    if (!to) return;
+    setTimeout(function () {
+      var ev = new Event('message');
+      ev.data = data;
+      ev.ports = [];
+      if (typeof to._onmessage === 'function') {
+        try { to._onmessage.call(to, ev); } catch (e) { log('MessagePort: ' + errText(e)); }
+      }
+      to.dispatchEvent(ev);
+    }, 0);
+  }
+  start() { this._started = true; }
+  close() { this._other = null; }
+}
+defineTag(MessagePort.prototype, 'MessagePort');
+
+class MessageChannel {
+  constructor() {
+    this.port1 = new MessagePort();
+    this.port2 = new MessagePort();
+    this.port1._other = this.port2;
+    this.port2._other = this.port1;
+  }
+}
+defineTag(MessageChannel.prototype, 'MessageChannel');
+
+class BroadcastChannel extends EventTarget {
+  constructor(name) { super(); this.name = String(name); this.onmessage = null; }
+  postMessage() {}
+  close() {}
+}
+
+/* Sin hilos en la PS3: el Worker avisa un error en vez de colgar la pagina */
+class Worker extends EventTarget {
+  constructor(url) {
+    super();
+    this.onmessage = null;
+    this.onerror = null;
+    var self = this;
+    setTimeout(function () {
+      var ev = new Event('error');
+      ev.message = 'Worker no disponible en EonSurf';
+      if (typeof self.onerror === 'function') { try { self.onerror(ev); } catch (_) {} }
+      self.dispatchEvent(ev);
+    }, 0);
+  }
+  postMessage() {}
+  terminate() {}
+}
+defineTag(Worker.prototype, 'Worker');
+
+class CSSRuleList extends Array {}
+class CSSStyleSheet {
+  constructor(opts) {
+    opts = opts || {};
+    this.cssRules = [];
+    this.media = opts.media || '';
+    this.disabled = !!opts.disabled;
+    this.ownerNode = null;
+    this._text = '';
+  }
+  get rules() { return this.cssRules; }
+  replaceSync(text) {
+    this._text = String(text);
+    this.cssRules = this._text.split('}').filter(function (r) { return r.trim(); })
+      .map(function (r) { return { cssText: r.trim() + '}' }; });
+    eonApplySheets();
+  }
+  replace(text) { this.replaceSync(text); return Promise.resolve(this); }
+  insertRule(rule, index) {
+    index = index === undefined ? 0 : index;
+    this.cssRules.splice(index, 0, { cssText: String(rule) });
+    this._text = this.cssRules.map(function (r) { return r.cssText; }).join('\n');
+    eonApplySheets();
+    return index;
+  }
+  deleteRule(index) {
+    this.cssRules.splice(index, 1);
+    this._text = this.cssRules.map(function (r) { return r.cssText; }).join('\n');
+    eonApplySheets();
+  }
+}
+defineTag(CSSStyleSheet.prototype, 'CSSStyleSheet');
+
+/* document.adoptedStyleSheets: se vuelcan en un <style> propio del head */
+var adoptedSheets = [];
+function eonApplySheets() {
+  var d = getDocument();
+  if (!d || !d.head) return;
+  var st = d.getElementById('__eon_adopted');
+  var css = adoptedSheets.map(function (s) { return s._text; }).join('\n');
+  if (!st) {
+    if (!css) return;
+    st = d.createElement('style');
+    st.id = '__eon_adopted';
+    d.head.appendChild(st);
+  }
+  if (st.textContent !== css) st.textContent = css;
+}
+try {
+  Object.defineProperty(Document.prototype, 'adoptedStyleSheets', {
+    get: function () { return adoptedSheets; },
+    set: function (v) { adoptedSheets = Array.from(v || []); eonApplySheets(); },
+    configurable: true
+  });
+} catch (_) {}
+
+/* Navigation Timing (YouTube y medidores de rendimiento lo leen al arrancar) */
+var navEntry = {
+  name: '', entryType: 'navigation', startTime: 0, duration: 0, type: 'navigate',
+  redirectCount: 0, fetchStart: 0, domainLookupStart: 0, domainLookupEnd: 0,
+  connectStart: 0, connectEnd: 0, secureConnectionStart: 0, requestStart: 0,
+  responseStart: 0, responseEnd: 0, domInteractive: 0, domContentLoadedEventStart: 0,
+  domContentLoadedEventEnd: 0, domComplete: 0, loadEventStart: 0, loadEventEnd: 0,
+  transferSize: 0, encodedBodySize: 0, decodedBodySize: 0, toJSON: function () { return this; }
+};
+performanceObj.timing = {
+  navigationStart: perfStart, fetchStart: perfStart, requestStart: perfStart,
+  responseStart: perfStart, responseEnd: perfStart, domLoading: perfStart,
+  domInteractive: perfStart, domContentLoadedEventStart: perfStart,
+  domContentLoadedEventEnd: perfStart, domComplete: perfStart,
+  loadEventStart: perfStart, loadEventEnd: perfStart, toJSON: function () { return this; }
+};
+performanceObj.navigation = { type: 0, redirectCount: 0 };
+performanceObj.memory = { jsHeapSizeLimit: 96 * 1048576, totalJSHeapSize: 0, usedJSHeapSize: 0 };
+performanceObj.getEntriesByType = function (t) { return t === 'navigation' ? [navEntry] : []; };
+performanceObj.getEntries = function () { return [navEntry]; };
+performanceObj.getEntriesByName = function () { return []; };
+
+class PerformanceObserver {
+  constructor(cb) { this._cb = cb; }
+  observe() {}
+  disconnect() {}
+  takeRecords() { return []; }
+}
+PerformanceObserver.supportedEntryTypes = [];
+
+/* Import maps: <script type="importmap"> traduce import "react" a una URL */
+var importMap = { imports: {}, scopes: {} };
+hook('addImportMap', function (text) {
+  var m = JSON.parse(String(text));
+  var base = ns.href();
+  var abs = function (v) { try { return new URL(v, base).href; } catch (_) { return v; } };
+  Object.keys(m.imports || {}).forEach(function (k) { importMap.imports[k] = abs(m.imports[k]); });
+  Object.keys(m.scopes || {}).forEach(function (s) {
+    var sc = importMap.scopes[abs(s)] = importMap.scopes[abs(s)] || {};
+    Object.keys(m.scopes[s]).forEach(function (k) { sc[k] = abs(m.scopes[s][k]); });
+  });
+});
+function mapLookup(table, name) {
+  if (hasOwn.call(table, name)) return table[name];
+  /* prefijo mas largo terminado en "/" */
+  var best = null;
+  Object.keys(table).forEach(function (k) {
+    if (k.endsWith('/') && name.startsWith(k) && (best === null || k.length > best.length)) best = k;
+  });
+  return best === null ? null : table[best] + name.slice(best.length);
+}
+hook('resolveImport', function (name) {
+  name = String(name);
+  var r = mapLookup(importMap.imports, name);
+  if (r === null) {
+    Object.keys(importMap.scopes).some(function (s) { r = mapLookup(importMap.scopes[s], name); return r !== null; });
+  }
+  return r === null ? undefined : r;
+});
+
 /* ---------------------------------------------------------------- arranque */
 
 installGlobals();
+
+defGlobal('MessageChannel', MessageChannel);
+defGlobal('MessagePort', MessagePort);
+defGlobal('BroadcastChannel', BroadcastChannel);
+defGlobal('Worker', Worker);
+defGlobal('SharedWorker', Worker);
+defGlobal('CSSStyleSheet', CSSStyleSheet);
+defGlobal('CSSRuleList', CSSRuleList);
+defGlobal('PerformanceObserver', PerformanceObserver);
+defGlobal('CharacterData', CharacterData);
+[['DocumentType'], ['Attr'], ['ShadowRoot'], ['HTMLUnknownElement'], ['SVGElement'], ['Range'], ['Selection']].forEach(function (n) {
+  if (!(n[0] in G)) defGlobal(n[0], class extends Node {});
+});
 
 try {
   var startDoc = getDocument();

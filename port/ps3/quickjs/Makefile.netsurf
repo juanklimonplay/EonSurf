@@ -6,11 +6,11 @@
 
 content/handlers/javascript/quickjs/eon_qjs.c: $(OBJROOT)/quickjs/eon_dom_js.h
 
-# dom.js va dentro del programa, terminado en 0 como pide JS_Eval
-$(OBJROOT)/quickjs/eon_dom_js.h: content/handlers/javascript/quickjs/dom.js $(TOOLROOT)/xxd
+# intl.js + dom.js van dentro del programa, terminados en 0 como pide JS_Eval
+$(OBJROOT)/quickjs/eon_dom_js.h: content/handlers/javascript/quickjs/intl.js content/handlers/javascript/quickjs/dom.js $(TOOLROOT)/xxd
 	$(Q)$(MKDIR) -p $(OBJROOT)/quickjs
 	$(VQ)echo "     XXD: $<"
-	$(Q)cp $< $(OBJROOT)/quickjs/dom.js.z && printf '\000' >> $(OBJROOT)/quickjs/dom.js.z
+	$(Q)cat content/handlers/javascript/quickjs/intl.js content/handlers/javascript/quickjs/dom.js > $(OBJROOT)/quickjs/dom.js.z && printf '\000' >> $(OBJROOT)/quickjs/dom.js.z
 	$(Q)$(TOOLROOT)/xxd -i $(OBJROOT)/quickjs/dom.js.z $@.tmp
 	$(Q)sed -e 's/unsigned char [A-Za-z0-9_]*\[\]/unsigned char eon_dom_js[]/' \
 		-e 's/unsigned int [A-Za-z0-9_]*_len/unsigned int eon_dom_js_len/' $@.tmp > $@

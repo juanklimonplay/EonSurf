@@ -57,6 +57,7 @@ else
   if [ -d "$Q" ]; then
     cmp -s port/ps3/quickjs/eon_qjs.c "$Q/eon_qjs.c" || cp port/ps3/quickjs/eon_qjs.c "$Q/eon_qjs.c"
     cmp -s port/ps3/quickjs/dom.js "$Q/dom.js" || cp port/ps3/quickjs/dom.js "$Q/dom.js"
+    cmp -s port/ps3/quickjs/intl.js "$Q/intl.js" || cp port/ps3/quickjs/intl.js "$Q/intl.js"
   fi
 fi
 

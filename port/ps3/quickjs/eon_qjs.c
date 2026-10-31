@@ -21,6 +21,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
+#include <curl/curl.h>
 #include <nsutils/time.h>
 #include <dom/dom.h>
 #include <dom/bindings/hubbub/parser.h>
@@ -29,6 +30,7 @@
 
 #include "utils/errors.h"
 #include "utils/log.h"
+#include "utils/nsoption.h"
 #include "utils/nsurl.h"
 #include "utils/corestrings.h"
 #include "netsurf/browser_window.h"
@@ -51,7 +53,7 @@
 #ifndef EONSURF_STORAGE_DIR
 #define EONSURF_STORAGE_DIR "/dev_hdd0/game/EONS00001/USRDIR/storage"
 #endif
-#define EON_EXEC_TIMEOUT_MS 10000
+#define EON_EXEC_TIMEOUT_MS 30000 /* el PPU es lento: sitios como BBC necesitan mas de 10 s */
 #define EON_STORAGE_MAX (4 * 1024 * 1024)
 #define EON_MAX_LISTEN 64
 
@@ -132,6 +134,18 @@ static void eon_log_exception(JSContext *ctx, const char *where)
 	JS_FreeValue(ctx, stack);
 	if (msg) JS_FreeCString(ctx, msg);
 	JS_FreeValue(ctx, e);
+}
+
+/* promesas rechazadas sin manejar: al registro (ahi fallan los modulos) */
+static void eon_rejection(JSContext *ctx, JSValueConst promise, JSValueConst reason,
+			  bool is_handled, void *opaque)
+{
+	const char *msg;
+	(void)promise; (void)opaque;
+	if (is_handled) return;
+	msg = JS_ToCString(ctx, reason);
+	NSLOG(netsurf, WARNING, "JS unhandled rejection: %s", msg ? msg : "?");
+	if (msg) JS_FreeCString(ctx, msg);
 }
 
 /* Promesas y demas trabajos pendientes: correrlos despues de cada entrada a JS */
@@ -1221,6 +1235,171 @@ static JSValue ns_storage(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	return r;
 }
 
+/* ------------------------------------------------------------------ modulos JS */
+
+/* Los import se resuelven contra la URL del modulo que los pide y se bajan con
+ * libcurl en el momento (bloquea un instante, pero el cargador de QuickJS es
+ * sincronico). Los nombres "pelados" ("react") no se soportan sin import map. */
+
+typedef struct {
+	char *buf;
+	size_t len;
+	size_t cap;
+} eon_buf;
+
+static size_t eon_curl_write(void *p, size_t sz, size_t n, void *ud)
+{
+	eon_buf *b = ud;
+	size_t add = sz * n;
+	if (b->len + add + 1 > b->cap) {
+		size_t cap = (b->cap ? b->cap * 2 : 65536);
+		char *nb;
+		while (cap < b->len + add + 1) cap *= 2;
+		nb = realloc(b->buf, cap);
+		if (nb == NULL) return 0;
+		b->buf = nb;
+		b->cap = cap;
+	}
+	memcpy(b->buf + b->len, p, add);
+	b->len += add;
+	b->buf[b->len] = '\0';
+	return add;
+}
+
+/* baja url; devuelve texto terminado en 0 (liberar con free) o NULL */
+static char *eon_fetch_sync(const char *url, size_t *len)
+{
+	CURL *c = curl_easy_init();
+	eon_buf b = { NULL, 0, 0 };
+	long code = 0;
+	CURLcode rc;
+	nsurl *u = NULL;
+	char *cookie = NULL;
+
+	if (c == NULL) return NULL;
+	curl_easy_setopt(c, CURLOPT_URL, url);
+	curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
+	curl_easy_setopt(c, CURLOPT_TIMEOUT, 30L);
+	curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+	curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "");
+	curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, eon_curl_write);
+	curl_easy_setopt(c, CURLOPT_WRITEDATA, &b);
+	if (nsoption_charp(ca_bundle) != NULL) {
+		curl_easy_setopt(c, CURLOPT_CAINFO, nsoption_charp(ca_bundle));
+	}
+	if (nsurl_create(url, &u) == NSERROR_OK) {
+		cookie = urldb_get_cookie(u, true);
+		if (cookie != NULL) curl_easy_setopt(c, CURLOPT_COOKIE, cookie);
+		nsurl_unref(u);
+	}
+	rc = curl_easy_perform(c);
+	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+	curl_easy_cleanup(c);
+	free(cookie);
+	if (rc != CURLE_OK || code >= 400 || b.buf == NULL) {
+		NSLOG(netsurf, WARNING, "EonSurf: module fetch failed %s (curl %d, http %ld)", url, (int)rc, code);
+		free(b.buf);
+		return NULL;
+	}
+	*len = b.len;
+	return b.buf;
+}
+
+/* import "react" -> URL segun la import map de la pagina (__ns.importMap) */
+static char *eon_importmap_lookup(JSContext *ctx, const char *name)
+{
+	struct jsthread *t = eon_thread(ctx);
+	JSValue f, r, arg;
+	char *out = NULL;
+	f = JS_GetPropertyStr(ctx, t->ns, "resolveImport");
+	if (JS_IsFunction(ctx, f)) {
+		arg = JS_NewString(ctx, name);
+		r = JS_Call(ctx, f, t->ns, 1, &arg);
+		JS_FreeValue(ctx, arg);
+		if (JS_IsString(r)) {
+			const char *s = JS_ToCString(ctx, r);
+			if (s) {
+				out = js_strdup(ctx, s);
+				JS_FreeCString(ctx, s);
+			}
+		}
+		JS_FreeValue(ctx, r);
+	}
+	JS_FreeValue(ctx, f);
+	return out;
+}
+
+static char *eon_mod_normalize(JSContext *ctx, const char *base, const char *name, void *opaque)
+{
+	nsurl *b = NULL, *u = NULL;
+	char *r = NULL;
+	(void)opaque;
+	/* nombres "pelados" (sin ./ ../ / ni esquema): import map */
+	if (name[0] != '.' && name[0] != '/' && strstr(name, "://") == NULL &&
+	    strncmp(name, "data:", 5) != 0 && strncmp(name, "blob:", 5) != 0) {
+		r = eon_importmap_lookup(ctx, name);
+		if (r != NULL) {
+			return r;
+		}
+	}
+	if (nsurl_create(base, &b) == NSERROR_OK) {
+		if (nsurl_join(b, name, &u) == NSERROR_OK) {
+			r = js_strdup(ctx, nsurl_access(u));
+			nsurl_unref(u);
+		}
+		nsurl_unref(b);
+	}
+	if (r == NULL) {
+		r = js_strdup(ctx, name);
+	}
+	return r;
+}
+
+static void eon_mod_set_meta(JSContext *ctx, JSModuleDef *m, const char *url)
+{
+	JSValue meta = JS_GetImportMeta(ctx, m);
+	if (!JS_IsException(meta)) {
+		JS_DefinePropertyValueStr(ctx, meta, "url", JS_NewString(ctx, url), JS_PROP_C_W_E);
+		JS_FreeValue(ctx, meta);
+	}
+}
+
+static JSModuleDef *eon_mod_loader(JSContext *ctx, const char *name, void *opaque)
+{
+	size_t len = 0;
+	char *src;
+	JSValue fn;
+	JSModuleDef *m;
+	(void)opaque;
+
+	src = eon_fetch_sync(name, &len);
+	if (src == NULL) {
+		JS_ThrowReferenceError(ctx, "could not load module '%s'", name);
+		return NULL;
+	}
+	fn = JS_Eval(ctx, src, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	free(src);
+	if (JS_IsException(fn)) {
+		return NULL;
+	}
+	m = JS_VALUE_GET_PTR(fn);
+	eon_mod_set_meta(ctx, m, name);
+	JS_FreeValue(ctx, fn);
+	return m;
+}
+
+/* evaluar un <script type="module">; name = URL del script o de la pagina */
+static JSValue eon_eval_module(struct jsthread *t, const char *buf, size_t len, const char *name)
+{
+	JSValue fn = JS_Eval(t->ctx, buf, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	if (JS_IsException(fn)) {
+		return fn;
+	}
+	eon_mod_set_meta(t->ctx, JS_VALUE_GET_PTR(fn), name);
+	return JS_EvalFunction(t->ctx, fn);
+}
+
 /* ------------------------------------------------------------------ tabla __ns */
 
 static const JSCFunctionListEntry eon_ns_funcs[] = {
@@ -1315,6 +1494,8 @@ nserror js_newheap(int timeout, jsheap **heap)
 	JS_SetMemoryLimit(h->rt, 96 * 1024 * 1024);
 	JS_SetMaxStackSize(h->rt, 512 * 1024);
 	JS_SetInterruptHandler(h->rt, eon_interrupt, h);
+	JS_SetModuleLoaderFunc(h->rt, eon_mod_normalize, eon_mod_loader, h);
+	JS_SetHostPromiseRejectionTracker(h->rt, eon_rejection, NULL);
 	if (eon_node_class_id == 0) {
 		JS_NewClassID(h->rt, &eon_node_class_id);
 	}
@@ -1443,8 +1624,28 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 	memcpy(buf, txt, txtlen);
 	buf[txtlen] = '\0';
 	NSLOG(netsurf, INFO, "EonSurf: js_exec %s (%u bytes)", name != NULL ? name : "script", (unsigned)txtlen);
-	r = JS_Eval(t->ctx, buf, txtlen, name != NULL ? name : "script",
-		    JS_EVAL_TYPE_GLOBAL);
+	if (name != NULL && strcmp(name, "importmap:") == 0) {
+		/* <script type="importmap">: dom.js guarda el JSON */
+		JSValue arg = JS_NewStringLen(t->ctx, buf, txtlen);
+		r = eon_call_ns(t, "addImportMap", 1, &arg);
+		JS_FreeValue(t->ctx, arg);
+	} else if (name != NULL && strncmp(name, "module:", 7) == 0) {
+		/* <script type="module">: los inline se resuelven contra la pagina */
+		const char *mname = name + 7;
+		JSValue href = JS_UNDEFINED;
+		const char *hs = NULL;
+		if (mname[0] == '?') {
+			href = ns_href(t->ctx, JS_UNDEFINED, 0, NULL);
+			hs = JS_ToCString(t->ctx, href);
+			mname = hs != NULL ? hs : "about:blank";
+		}
+		r = eon_eval_module(t, buf, txtlen, mname);
+		if (hs) JS_FreeCString(t->ctx, hs);
+		JS_FreeValue(t->ctx, href);
+	} else {
+		r = JS_Eval(t->ctx, buf, txtlen, name != NULL ? name : "script",
+			    JS_EVAL_TYPE_GLOBAL);
+	}
 	free(buf);
 	ok = !JS_IsException(r);
 	if (!ok) {
@@ -1493,6 +1694,15 @@ void js_handle_new_element(jsthread *thread, struct dom_element *node)
 	bool has_on = false;
 	JSValue arg;
 
+	/* elementos personalizados (<mi-elemento>): dom.js los "mejora" si estan definidos */
+	{
+		dom_string *tag = NULL;
+		dom_node_get_node_name((dom_node *)node, &tag);
+		if (tag != NULL) {
+			has_on = memchr(dom_string_data(tag), '-', dom_string_byte_length(tag)) != NULL;
+			dom_string_unref(tag);
+		}
+	}
 	if (dom_node_get_attributes((dom_node *)node, &map) != DOM_NO_ERR || map == NULL) return;
 	dom_namednodemap_get_length(map, &len);
 	for (i = 0; i < len && !has_on; i++) {
