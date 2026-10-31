@@ -21,10 +21,11 @@ function isNode(v) {
 }
 function ntype(n) { return ns.type(n); }
 function errText(e) {
+  /* en QuickJS el stack no incluye el mensaje: van los dos */
   try {
     if (e && typeof e === 'object') {
-      if (e.stack) return String(e.stack);
-      if (e.message) return String(e.message);
+      var head = (e.name ? e.name + ': ' : '') + (e.message !== undefined ? e.message : '');
+      return e.stack ? head + ' ' + String(e.stack).split('\n').slice(0, 3).join(' | ') : head || String(e);
     }
     return String(e);
   } catch (_) { return 'error'; }
@@ -5461,6 +5462,233 @@ defGlobal('CSSStyleSheet', CSSStyleSheet);
 defGlobal('CSSRuleList', CSSRuleList);
 defGlobal('PerformanceObserver', PerformanceObserver);
 defGlobal('CharacterData', CharacterData);
+
+/* Interfaces que recorre el polyfill de componentes web de YouTube (ShadyDOM) */
+class CDATASection extends Text {}
+class ProcessingInstruction extends CharacterData {}
+class ErrorEvent extends Event {
+  constructor(type, init) {
+    super(type, init);
+    init = init || {};
+    this.message = init.message || '';
+    this.filename = init.filename || '';
+    this.lineno = init.lineno || 0;
+    this.colno = init.colno || 0;
+    this.error = init.error === undefined ? null : init.error;
+  }
+}
+class PromiseRejectionEvent extends Event {
+  constructor(type, init) { super(type, init); this.promise = init && init.promise; this.reason = init && init.reason; }
+}
+class HTMLSlotElement extends HTMLElement {
+  get name() { return ns.getAttr(this, 'name') || ''; }
+  set name(v) { ns.setAttr(this, 'name', String(v)); }
+  assignedNodes() { return []; }
+  assignedElements() { return []; }
+  assign() {}
+}
+TAG_PROTOTYPES.SLOT = HTMLSlotElement.prototype;
+defGlobal('CDATASection', CDATASection);
+defGlobal('ProcessingInstruction', ProcessingInstruction);
+defGlobal('ErrorEvent', ErrorEvent);
+defGlobal('PromiseRejectionEvent', PromiseRejectionEvent);
+defGlobal('HTMLSlotElement', HTMLSlotElement);
+
+/* customElements es una instancia de CustomElementRegistry y los metodos viven
+ * en el prototipo: asi los polyfills que lo parchean (YouTube) funcionan */
+class CustomElementRegistry {
+  constructor() { throw new TypeError('Illegal constructor'); }
+}
+Object.keys(customElementsObj).forEach(function (k) {
+  Object.defineProperty(CustomElementRegistry.prototype, k,
+    { value: customElementsObj[k], writable: true, configurable: true });
+  delete customElementsObj[k];
+});
+Object.setPrototypeOf(customElementsObj, CustomElementRegistry.prototype);
+defineTag(CustomElementRegistry.prototype, 'CustomElementRegistry');
+defGlobal('CustomElementRegistry', CustomElementRegistry);
+
+/* ---------------------------------------------------------------- interfaces en bloque */
+/* Muchos sitios (YouTube, frameworks) tocan estas clases al arrancar aunque no
+ * las usen: alcanza con que existan y se comporten de forma razonable. */
+
+class Window extends EventTarget {
+  constructor() { super(); throw new TypeError('Illegal constructor'); }
+}
+defineTag(Window.prototype, 'Window');
+try { Object.setPrototypeOf(G, Window.prototype); } catch (_) {}
+defGlobal('Window', Window);
+
+/* eventos: copian lo que venga en init */
+function eventClass(Base, name, extra) {
+  var C = class extends Base {
+    constructor(type, init) {
+      super(type, init);
+      init = init || {};
+      for (var k in extra) this[k] = init[k] !== undefined ? init[k] : extra[k];
+    }
+  };
+  defineTag(C.prototype, name);
+  defGlobal(name, C);
+  return C;
+}
+var WheelEvent = eventClass(MouseEvent, 'WheelEvent', { deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0 });
+WheelEvent.DOM_DELTA_PIXEL = 0; WheelEvent.DOM_DELTA_LINE = 1; WheelEvent.DOM_DELTA_PAGE = 2;
+eventClass(MouseEvent, 'PointerEvent', { pointerId: 1, width: 1, height: 1, pressure: 0, pointerType: 'mouse', isPrimary: true, tiltX: 0, tiltY: 0 });
+eventClass(MouseEvent, 'DragEvent', { dataTransfer: null });
+eventClass(UIEvent, 'TouchEvent', { touches: [], targetTouches: [], changedTouches: [], altKey: false, ctrlKey: false, metaKey: false, shiftKey: false });
+eventClass(UIEvent, 'CompositionEvent', { data: '' });
+eventClass(Event, 'AnimationEvent', { animationName: '', elapsedTime: 0, pseudoElement: '' });
+eventClass(Event, 'TransitionEvent', { propertyName: '', elapsedTime: 0, pseudoElement: '' });
+eventClass(Event, 'PopStateEvent', { state: null });
+eventClass(Event, 'HashChangeEvent', { oldURL: '', newURL: '' });
+eventClass(Event, 'PageTransitionEvent', { persisted: false });
+eventClass(Event, 'StorageEvent', { key: null, oldValue: null, newValue: null, url: '', storageArea: null });
+eventClass(Event, 'ProgressEvent', { lengthComputable: false, loaded: 0, total: 0 });
+eventClass(Event, 'MessageEvent', { data: null, origin: '', lastEventId: '', source: null, ports: [] });
+eventClass(Event, 'SubmitEvent', { submitter: null });
+eventClass(Event, 'BeforeUnloadEvent', { returnValue: '' });
+eventClass(Event, 'SecurityPolicyViolationEvent', { violatedDirective: '', blockedURI: '' });
+eventClass(Event, 'ToggleEvent', { oldState: '', newState: '' });
+eventClass(Event, 'MediaQueryListEvent', { matches: false, media: '' });
+
+/* elementos HTML que faltaban: prototipo propio con su etiqueta */
+[['HTMLHeadingElement', ['H1', 'H2', 'H3', 'H4', 'H5', 'H6']], ['HTMLPreElement', ['PRE']],
+ ['HTMLBRElement', ['BR']], ['HTMLHRElement', ['HR']], ['HTMLTableSectionElement', ['THEAD', 'TBODY', 'TFOOT']],
+ ['HTMLTableCaptionElement', ['CAPTION']], ['HTMLTableColElement', ['COL', 'COLGROUP']],
+ ['HTMLFieldSetElement', ['FIELDSET']], ['HTMLLegendElement', ['LEGEND']], ['HTMLProgressElement', ['PROGRESS']],
+ ['HTMLMeterElement', ['METER']], ['HTMLDialogElement', ['DIALOG']], ['HTMLDetailsElement', ['DETAILS']],
+ ['HTMLPictureElement', ['PICTURE']], ['HTMLSourceElement', ['SOURCE']], ['HTMLObjectElement', ['OBJECT']],
+ ['HTMLEmbedElement', ['EMBED']], ['HTMLAreaElement', ['AREA']], ['HTMLMapElement', ['MAP']],
+ ['HTMLMenuElement', ['MENU']], ['HTMLDataListElement', ['DATALIST']], ['HTMLOutputElement', ['OUTPUT']],
+ ['HTMLTimeElement', ['TIME']], ['HTMLQuoteElement', ['Q', 'BLOCKQUOTE']], ['HTMLModElement', ['INS', 'DEL']],
+ ['HTMLBaseElement', ['BASE']], ['HTMLTrackElement', ['TRACK']], ['HTMLDListElement', ['DL']],
+ ['HTMLOptGroupElement', ['OPTGROUP']], ['HTMLDataElement', ['DATA']], ['HTMLFrameElement', ['FRAME']],
+ ['HTMLFrameSetElement', ['FRAMESET']], ['HTMLFontElement', ['FONT']], ['HTMLDirectoryElement', ['DIR']],
+ ['HTMLMarqueeElement', ['MARQUEE']], ['HTMLParamElement', ['PARAM']], ['HTMLSearchElement', ['SEARCH']]
+].forEach(function (d) {
+  if (d[0] in G) return;
+  var C = class extends HTMLElement {};
+  defineTag(C.prototype, d[0]);
+  d[1].forEach(function (t) { if (!TAG_PROTOTYPES[t]) TAG_PROTOTYPES[t] = C.prototype; });
+  defGlobal(d[0], C);
+});
+try {
+  var dlg = TAG_PROTOTYPES.DIALOG;
+  Object.defineProperty(dlg, 'open', { get: function () { return ns.getAttr(this, 'open') !== null; },
+    set: function (v) { if (v) ns.setAttr(this, 'open', ''); else ns.removeAttr(this, 'open'); }, configurable: true });
+  dlg.show = function () { ns.setAttr(this, 'open', ''); };
+  dlg.showModal = dlg.show;
+  dlg.close = function (rv) { ns.removeAttr(this, 'open'); this.returnValue = rv === undefined ? '' : String(rv); this.dispatchEvent(new Event('close')); };
+  var det = TAG_PROTOTYPES.DETAILS;
+  Object.defineProperty(det, 'open', { get: function () { return ns.getAttr(this, 'open') !== null; },
+    set: function (v) { if (v) ns.setAttr(this, 'open', ''); else ns.removeAttr(this, 'open'); }, configurable: true });
+} catch (_) {}
+var SVGBase = typeof G.SVGElement === "function" ? G.SVGElement : Element;
+class SVGGraphicsElement extends SVGBase {}
+class SVGSVGElement extends SVGGraphicsElement {}
+defGlobal('SVGGraphicsElement', SVGGraphicsElement);
+defGlobal('SVGSVGElement', SVGSVGElement);
+defGlobal('Option', function (text, value, defSel, sel) {
+  var o = getDocument().createElement('option');
+  if (text !== undefined) o.textContent = String(text);
+  if (value !== undefined) o.setAttribute('value', String(value));
+  if (defSel || sel) o.setAttribute('selected', '');
+  return o;
+});
+defGlobal('Audio', function (src) {
+  var a = getDocument().createElement('audio');
+  if (src !== undefined) a.setAttribute('src', String(src));
+  return a;
+});
+
+/* geometria */
+class DOMRectReadOnly {
+  constructor(x, y, w, h) { this.x = x || 0; this.y = y || 0; this.width = w || 0; this.height = h || 0; }
+  get left() { return Math.min(this.x, this.x + this.width); }
+  get right() { return Math.max(this.x, this.x + this.width); }
+  get top() { return Math.min(this.y, this.y + this.height); }
+  get bottom() { return Math.max(this.y, this.y + this.height); }
+  toJSON() { return { x: this.x, y: this.y, width: this.width, height: this.height, left: this.left, right: this.right, top: this.top, bottom: this.bottom }; }
+  static fromRect(r) { r = r || {}; return new this(r.x, r.y, r.width, r.height); }
+}
+class DOMRect extends DOMRectReadOnly {}
+class DOMPoint { constructor(x, y, z, w) { this.x = x || 0; this.y = y || 0; this.z = z || 0; this.w = w === undefined ? 1 : w; } }
+class DOMMatrix {
+  constructor() { this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0; this.is2D = true; this.isIdentity = true; }
+  translate(x, y) { var m = new DOMMatrix(); m.e = this.e + (x || 0); m.f = this.f + (y || 0); return m; }
+  scale() { return new DOMMatrix(); }
+  multiply() { return new DOMMatrix(); }
+  inverse() { return new DOMMatrix(); }
+  transformPoint(p) { return new DOMPoint(p.x + this.e, p.y + this.f); }
+  toString() { return 'matrix(1, 0, 0, 1, ' + this.e + ', ' + this.f + ')'; }
+}
+[['DOMRectReadOnly', DOMRectReadOnly], ['DOMRect', DOMRect], ['DOMPoint', DOMPoint], ['DOMPointReadOnly', DOMPoint],
+ ['DOMMatrix', DOMMatrix], ['DOMMatrixReadOnly', DOMMatrix], ['WebKitCSSMatrix', DOMMatrix]].forEach(function (d) { defGlobal(d[0], d[1]); });
+
+/* parsers y serializadores */
+class XMLSerializer { serializeToString(n) { return n && n.outerHTML !== undefined ? n.outerHTML : (n && n.textContent) || ''; } }
+class DOMParser {
+  parseFromString(text) {
+    /* documento liviano: un <div> fuera de la pagina con el HTML adentro */
+    var d = getDocument(), holder = d.createElement('div');
+    holder.innerHTML = String(text);
+    return {
+      body: holder, documentElement: holder, head: null,
+      querySelector: function (s) { return holder.querySelector(s); },
+      querySelectorAll: function (s) { return holder.querySelectorAll(s); },
+      getElementById: function (id) { return holder.querySelector('#' + id); },
+      getElementsByTagName: function (t) { return holder.getElementsByTagName(t); },
+      get title() { var t = holder.querySelector('title'); return t ? t.textContent : ''; }
+    };
+  }
+}
+defGlobal('XMLSerializer', XMLSerializer);
+defGlobal('DOMParser', DOMParser);
+
+/* red y almacenamiento que no hay: fallan de forma prolija, sin colgar */
+function failLater(obj, msg) {
+  setTimeout(function () {
+    var ev = new Event('error');
+    ev.message = msg;
+    if (typeof obj.onerror === 'function') { try { obj.onerror(ev); } catch (_) {} }
+    obj.dispatchEvent(ev);
+    if (typeof obj.onclose === 'function') { try { obj.onclose(new Event('close')); } catch (_) {} }
+  }, 0);
+}
+class WebSocket extends EventTarget {
+  constructor(url) { super(); this.url = String(url); this.readyState = 3; this.bufferedAmount = 0; this.protocol = ''; failLater(this, 'WebSocket no disponible'); }
+  send() {}
+  close() {}
+}
+WebSocket.CONNECTING = 0; WebSocket.OPEN = 1; WebSocket.CLOSING = 2; WebSocket.CLOSED = 3;
+class EventSource extends EventTarget {
+  constructor(url) { super(); this.url = String(url); this.readyState = 2; failLater(this, 'EventSource no disponible'); }
+  close() {}
+}
+defGlobal('WebSocket', WebSocket);
+defGlobal('EventSource', EventSource);
+var idbRequest = function () {
+  var r = new EventTarget();
+  r.result = null; r.error = new DOMException('IndexedDB no disponible', 'UnknownError'); r.readyState = 'done';
+  failLater(r, 'IndexedDB no disponible');
+  return r;
+};
+defGlobal('indexedDB', { open: idbRequest, deleteDatabase: idbRequest, databases: function () { return Promise.resolve([]); }, cmp: function (a, b) { return a < b ? -1 : a > b ? 1 : 0; } });
+class FileReader extends EventTarget {
+  constructor() { super(); this.result = null; this.readyState = 0; this.error = null; }
+  _done(v) { var self = this; setTimeout(function () { self.result = v; self.readyState = 2; var ev = new Event('load'); if (typeof self.onload === 'function') self.onload(ev); self.dispatchEvent(ev); if (typeof self.onloadend === 'function') self.onloadend(ev); }, 0); }
+  readAsText(b) { var self = this; Promise.resolve(b && b.text ? b.text() : String(b)).then(function (t) { self._done(t); }); }
+  readAsDataURL(b) { var self = this; Promise.resolve(b && b.text ? b.text() : String(b)).then(function (t) { self._done('data:' + ((b && b.type) || 'text/plain') + ';base64,' + btoa(unescape(encodeURIComponent(t)))); }); }
+  readAsArrayBuffer(b) { var self = this; Promise.resolve(b && b.arrayBuffer ? b.arrayBuffer() : new ArrayBuffer(0)).then(function (t) { self._done(t); }); }
+  abort() {}
+}
+class File extends Blob { constructor(parts, name, opts) { super(parts, opts); this.name = String(name); this.lastModified = Date.now(); } }
+defGlobal('FileReader', FileReader);
+defGlobal('File', File);
+defGlobal('Notification', Object.assign(function () { throw new TypeError('Notification no disponible'); }, { permission: 'denied', requestPermission: function () { return Promise.resolve('denied'); } }));
+defGlobal('Path2D', class { constructor() {} addPath() {} moveTo() {} lineTo() {} closePath() {} rect() {} arc() {} });
+defGlobal('ImageData', class { constructor(w, h) { this.width = w; this.height = h; this.data = new Uint8ClampedArray(w * h * 4); } });
 [['DocumentType'], ['Attr'], ['ShadowRoot'], ['HTMLUnknownElement'], ['SVGElement'], ['Range'], ['Selection']].forEach(function (n) {
   if (!(n[0] in G)) defGlobal(n[0], class extends Node {});
 });
