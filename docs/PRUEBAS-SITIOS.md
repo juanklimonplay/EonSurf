@@ -46,3 +46,18 @@ ven mal o incompletos; los más pesados no funcionan.
    rehacer toda la página en cada cambio.
 8. **Fuentes sin caracteres CJK** (japonés en Wikipedia) — agregar una fuente Noto CJK como respaldo
    (pesa ~15 MB: va bien en la versión full).
+
+## Ronda 2 (30-10-2026, mismo día)
+
+Agregado: módulos JS + import maps, componentes web reales, Shadow DOM aplanado, `Intl`, variables
+CSS, reglas HTML5 en el CSS base, ~60 interfaces estándar más, código HTTP real en fetch/XHR, límite
+de 30 s, y un crash arreglado (pedidos de red liberados dos veces).
+
+| Sitio | Antes | Ahora |
+|---|---|---|
+| GitHub | 8 errores JS, avisos ocultos a la vista | 0 errores; módulos y React (82 imports) cargan; ya no se ven los avisos ocultos; falta CSS del encabezado (48 s) |
+| reddit.com | posts sin componentes | se arman los componentes (panel de registro, menús); diseño todavía desarmado (53 s) |
+| YouTube | 3 errores, solo esqueleto | 0 errores; Polymer arranca y crea `yt-icon`, `ytd-logo`...; algunos componentes fallan por dentro; sigue sin videos |
+
+Próximo: errores internos de los componentes de YouTube (ahora el registro muestra el mensaje),
+CSS grid y posicionamiento (modales que deberían flotar), y velocidad (callbacks de 30 s en reddit).
