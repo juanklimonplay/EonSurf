@@ -283,7 +283,7 @@ static void eon_subst(eon_out *o, const char *p, const char *end, int depth)
 
 /* Devuelve el CSS de la hoja con las variables resueltas (liberar con free),
  * o NULL si no habia nada guardado. */
-static char *eon_css_take(const void *sheet, size_t *len)
+static char *eon_css_take_vars(const void *sheet, size_t *len)
 {
 	eon_cssbuf *b = eon_cssbuf_get(sheet, false);
 	eon_out o = { NULL, 0, 0, true };

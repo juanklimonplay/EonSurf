@@ -9,7 +9,8 @@ import shutil
 
 CSS = 'netsurf/content/handlers/css/'
 here = os.path.dirname(os.path.abspath(__file__))
-shutil.copy(os.path.join(here, 'eon_cssvars.c'), CSS + 'eon_cssvars.c')
+for f in ('eon_cssvars.c', 'eon_cssmodern.c', 'eon_csstake.c'):
+    shutil.copy(os.path.join(here, f), CSS + f)
 
 
 def patch(path, old, new):
@@ -19,7 +20,8 @@ def patch(path, old, new):
 
 
 patch(CSS + 'css.c', '#include "css/internal.h"\n',
-      '#include "css/internal.h"\n#include "eon_cssvars.c" /* EonSurf: variables CSS */\n')
+      '#include "css/internal.h"\n#include "eon_cssvars.c" /* EonSurf: variables CSS */\n'
+      '#include "eon_cssmodern.c" /* EonSurf: grid, inset, gap... */\n#include "eon_csstake.c"\n')
 
 patch(CSS + 'css.c', '''	return css_stylesheet_append_data(c->sheet,
 			(const uint8_t *) data, size);''',
