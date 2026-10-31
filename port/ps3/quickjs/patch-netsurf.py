@@ -121,3 +121,21 @@ for inc in ('#include <strings.h>\n', '#include <stdlib.h>\n', '#include <string
 open(HTML + 'script.c', 'w').write(s)
 
 print('EonSurf: modulos JS en NetSurf')
+
+# Codigo HTTP real para fetch/XHR (llcache no lo expone): se lee al llegar las
+# cabeceras, mientras el fetch todavia existe
+with open('netsurf/content/llcache.c', 'a') as f:
+    f.write('''
+
+/* EonSurf: codigo HTTP de un pedido (0 si ya no hay fetch) */
+long eon_llcache_http_code(const llcache_handle *handle);
+long eon_llcache_http_code(const llcache_handle *handle)
+{
+	if (handle == NULL || handle->object == NULL ||
+	    handle->object->fetch.fetch == NULL) {
+		return 0;
+	}
+	return fetch_http_code(handle->object->fetch.fetch);
+}
+''')
+print('EonSurf: codigo HTTP en llcache')

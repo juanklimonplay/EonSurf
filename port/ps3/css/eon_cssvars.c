@@ -88,15 +88,36 @@ static void eon_cssbuf_free(const void *sheet)
 	}
 }
 
+/* tabla hash (direccionamiento abierto) nombre -> indice en eon_vars:
+ * GitHub tiene miles de variables y decenas de miles de var() */
+#define EON_HASH_SIZE 16384 /* potencia de 2, mayor que EON_VARS_MAX */
+static int eon_hash[EON_HASH_SIZE]; /* 0 = libre, si no indice + 1 */
+
+static unsigned int eon_hash_of(const char *s, size_t n)
+{
+	unsigned int h = 2166136261u;
+	while (n--) h = (h ^ (unsigned char)*s++) * 16777619u;
+	return h;
+}
+
 static eon_var *eon_var_find(const char *name, size_t len)
 {
-	unsigned int i;
-	for (i = 0; i < eon_nvars; i++) {
-		if (strlen(eon_vars[i].name) == len && memcmp(eon_vars[i].name, name, len) == 0) {
-			return &eon_vars[i];
-		}
+	unsigned int i = eon_hash_of(name, len) & (EON_HASH_SIZE - 1);
+	while (eon_hash[i] != 0) {
+		eon_var *v = &eon_vars[eon_hash[i] - 1];
+		if (strncmp(v->name, name, len) == 0 && v->name[len] == '\0') return v;
+		i = (i + 1) & (EON_HASH_SIZE - 1);
 	}
 	return NULL;
+}
+
+static eon_var *eon_var_add(const char *name, size_t len)
+{
+	unsigned int i = eon_hash_of(name, len) & (EON_HASH_SIZE - 1);
+	if (eon_nvars >= EON_VARS_MAX) return NULL;
+	while (eon_hash[i] != 0) i = (i + 1) & (EON_HASH_SIZE - 1);
+	eon_hash[i] = (int)eon_nvars + 1;
+	return &eon_vars[eon_nvars++];
 }
 
 static bool eon_is_ident(char c)
@@ -162,8 +183,7 @@ static void eon_collect_vars(const char *css, size_t len, unsigned int sheet)
 				const char *ve = eon_value_end(v + 1, end);
 				eon_var *var = eon_var_find(n, (size_t)(ne - n));
 				/* gana la primera definicion de cada hoja (la de :root, casi siempre) */
-				if (var == NULL && eon_nvars < EON_VARS_MAX) {
-					var = &eon_vars[eon_nvars++];
+				if (var == NULL && (var = eon_var_add(n, (size_t)(ne - n))) != NULL) {
 					var->name = eon_strndup_trim(n, ne);
 					var->value = eon_strndup_trim(v + 1, ve);
 					var->sheet = sheet;

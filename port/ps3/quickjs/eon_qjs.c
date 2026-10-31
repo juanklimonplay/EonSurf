@@ -70,10 +70,13 @@ typedef struct eon_timer {
 	int32_t id;
 } eon_timer;
 
+long eon_llcache_http_code(const llcache_handle *handle); /* patch-netsurf.py */
+
 typedef struct eon_req {
 	struct eon_req *next;
 	struct jsthread *thread;
 	int32_t id;
+	long http_code;
 	llcache_handle *handle;
 	char *post;
 } eon_req;
@@ -1086,6 +1089,14 @@ static void eon_http_done(struct jsthread *t, int32_t id, int status,
 	JS_FreeValue(t->ctx, args[3]);
 }
 
+/* despues de terminar, la cache todavia puede avisar (p. ej. al ponerse al dia):
+ * esos avisos van aca y no tocan el pedido ya liberado */
+static nserror eon_http_ignore(llcache_handle *h, const llcache_event *ev, void *pw)
+{
+	(void)h; (void)ev; (void)pw;
+	return NSERROR_OK;
+}
+
 static nserror eon_http_cb(llcache_handle *h, const llcache_event *ev, void *pw)
 {
 	eon_req *r = pw;
@@ -1094,15 +1105,19 @@ static nserror eon_http_cb(llcache_handle *h, const llcache_event *ev, void *pw)
 	size_t len = 0;
 	int status;
 
-	if (ev->type == LLCACHE_EVENT_DONE) {
+	if (ev->type == LLCACHE_EVENT_HAD_HEADERS) {
+		r->http_code = eon_llcache_http_code(h);
+		return NSERROR_OK;
+	} else if (ev->type == LLCACHE_EVENT_DONE) {
 		data = llcache_handle_get_source_data(h, &len);
-		status = 200;
+		status = r->http_code > 0 ? (int)r->http_code : 200;
 	} else if (ev->type == LLCACHE_EVENT_ERROR) {
 		status = 0;
 	} else {
 		return NSERROR_OK;
 	}
 	eon_req_unlink(r);
+	llcache_handle_change_callback(h, eon_http_ignore, NULL);
 	if (eon_enter(t)) {
 		eon_http_done(t, r->id, status, data, len,
 			      status ? llcache_handle_get_header(h, "Content-Type") : NULL);
@@ -1269,15 +1284,23 @@ static size_t eon_curl_write(void *p, size_t sz, size_t n, void *ud)
 /* baja url; devuelve texto terminado en 0 (liberar con free) o NULL */
 static char *eon_fetch_sync(const char *url, size_t *len)
 {
-	CURL *c = curl_easy_init();
+	/* una sola conexion reutilizada: evita un saludo TLS nuevo por cada import
+	 * (en la PS3 cada uno cuesta segundos) */
+	static CURL *c = NULL;
 	eon_buf b = { NULL, 0, 0 };
 	long code = 0;
 	CURLcode rc;
 	nsurl *u = NULL;
 	char *cookie = NULL;
 
-	if (c == NULL) return NULL;
+	if (c == NULL) {
+		c = curl_easy_init();
+		if (c == NULL) return NULL;
+	} else {
+		curl_easy_setopt(c, CURLOPT_COOKIE, NULL);
+	}
 	curl_easy_setopt(c, CURLOPT_URL, url);
+	curl_easy_setopt(c, CURLOPT_TCP_KEEPALIVE, 1L);
 	curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
 	curl_easy_setopt(c, CURLOPT_TIMEOUT, 30L);
@@ -1295,7 +1318,6 @@ static char *eon_fetch_sync(const char *url, size_t *len)
 	}
 	rc = curl_easy_perform(c);
 	curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
-	curl_easy_cleanup(c);
 	free(cookie);
 	if (rc != CURLE_OK || code >= 400 || b.buf == NULL) {
 		NSLOG(netsurf, WARNING, "EonSurf: module fetch failed %s (curl %d, http %ld)", url, (int)rc, code);
@@ -1373,6 +1395,7 @@ static JSModuleDef *eon_mod_loader(JSContext *ctx, const char *name, void *opaqu
 	JSModuleDef *m;
 	(void)opaque;
 
+	NSLOG(netsurf, INFO, "EonSurf: import %s", name);
 	src = eon_fetch_sync(name, &len);
 	if (src == NULL) {
 		JS_ThrowReferenceError(ctx, "could not load module '%s'", name);
